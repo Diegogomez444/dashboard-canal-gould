@@ -336,12 +336,9 @@ gasto_act   = parse_cop(summ.get("gasto_actual","0"))
 p_rest      = parse_cop(summ.get("p_restante","0"))
 
 def kcard(label, value, style="plain", color="", sub="", delta=""):
-    return f"""<div class="kc kc-{style}">
-      <div class="kc-lbl">{label}</div>
-      <div class="kc-val {color}">{value}</div>
-      {"<div class='kc-sub'>"+sub+"</div>" if sub else ""}
-      {"<div style='margin-top:.3rem'>"+delta+"</div>" if delta else ""}
-    </div>"""
+    s = f"<div class='kc-sub'>{sub}</div>" if sub else ""
+    d = f"<div style='margin-top:.3rem'>{delta}</div>" if delta else ""
+    return f"<div class='kc kc-{style}'><div class='kc-lbl'>{label}</div><div class='kc-val {color}'>{value}</div>{s}{d}</div>"
 
 r1c1,r1c2,r1c3,r1c4,r1c5,r1c6,r1c7 = st.columns(7)
 r1c1.markdown(kcard("Inv. Pauta",   fmt_cop(inv_pauta),  "plain"), unsafe_allow_html=True)
@@ -415,78 +412,57 @@ m10.markdown(kcard("Conv. Web",     f"{avg_cw:.2f}%",   "plain","",
 # ── SECTION 3: GAUGES ─────────────────────────────────────────────────────────
 st.markdown('<div class="slabel">Indicadores de rendimiento</div>', unsafe_allow_html=True)
 
-def make_gauge(value, title, max_val, thresholds, colors_g, suffix="$", fmt_fn=None):
-    display = fmt_fn(value) if fmt_fn and value else f"{suffix}{value:,.0f}" if value else "—"
-    steps = []
-    prev = 0
-    for (thresh, col) in zip(thresholds, colors_g[:-1]):
-        steps.append(dict(range=[prev, thresh], color=col))
-        prev = thresh
-    steps.append(dict(range=[prev, max_val], color=colors_g[-1]))
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=value if value else 0,
-        number={"valueformat": ",.0f", "prefix": "$" if suffix=="$" else "",
-                "suffix": suffix if suffix!="$" else "",
-                "font": {"size": 22, "color": WHITE, "family": "Inter"}},
-        title={"text": title, "font": {"size": 11, "color": MUTED, "family": "Inter"}},
-        gauge={
-            "axis": {"range": [0, max_val], "tickfont": {"color": MUTED, "size": 9},
-                     "tickcolor": MUTED, "gridcolor": BORDER},
-            "bar": {"color": PURPLEL, "thickness": 0.25},
-            "bgcolor": CARD2,
-            "bordercolor": BORDER,
-            "steps": steps,
-            "threshold": {"line": {"color": WHITE, "width": 3}, "value": value or 0}
-        }
-    ))
-    fig.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font={"family": "Inter"}, height=200,
-        margin=dict(l=20, r=20, t=40, b=10)
-    )
-    return fig
+def safe_last(col):
+    if col not in dfv.columns or len(dfv[col].dropna()) == 0: return 0
+    v = dfv[col].dropna().iloc[-1]
+    return float(v) if not np.isnan(float(v)) else 0
 
-last_cxr  = dfv["CxResultado FB"].dropna().iloc[-1] if len(dfv) > 0 and "CxResultado FB" in dfv.columns else 0
-last_ctr  = dfv["CTR"].dropna().iloc[-1]             if len(dfv) > 0 and "CTR" in dfv.columns else 0
-last_cw   = dfv["Conv Web"].dropna().iloc[-1]         if len(dfv) > 0 and "Conv Web" in dfv.columns else 0
-last_carw = dfv["Cargar Web"].dropna().iloc[-1]       if len(dfv) > 0 and "Cargar Web" in dfv.columns else 0
+def indicator_card(label, value, display, pct, color, ref_labels):
+    bar = f"<div style='background:{MUTED2};border-radius:999px;height:8px;overflow:hidden;margin:.5rem 0'><div style='height:100%;width:{min(pct,100):.0f}%;background:{color};border-radius:999px'></div></div>"
+    refs = f"<div style='font-size:.58rem;color:{MUTED};margin-top:.3rem'>{ref_labels}</div>"
+    return f"<div class='kc kc-plain'><div class='kc-lbl'>{label}</div><div class='kc-val' style='color:{color};font-size:1.6rem'>{display}</div>{bar}{refs}</div>"
+
+last_cxr  = safe_last("CxResultado FB")
+last_ctr  = safe_last("CTR")
+last_cw   = safe_last("Conv Web")
+last_carw = safe_last("Cargar Web")
+
+# CxResultado color por tier
+def cxr_color(v):
+    if v < 750:  return GREEN
+    if v < 1125: return "#84CC16"
+    if v < 1500: return AMBER
+    if v < 1875: return "#F97316"
+    return RED
+
+def cxr_tier(v):
+    if v < 750:  return "V1 Excelente"
+    if v < 1125: return "V2 Optimizar"
+    if v < 1500: return "V3 Objetivo ✓"
+    if v < 1875: return "V4 Alerta"
+    return "V5 Apagar"
 
 g1,g2,g3,g4 = st.columns(4)
-with g1:
-    st.plotly_chart(make_gauge(
-        last_cxr, "CxResultado FB (último día)", 2500,
-        [750, 1125, 1500, 1875],
-        [GREEN, "#84CC16", AMBER, "#F97316", RED]
-    ), use_container_width=True, config={"displayModeBar": False})
-    st.markdown(f"""<div style='text-align:center;margin-top:-1rem'>
-      <span style='font-size:.6rem;color:{MUTED};letter-spacing:.15em;text-transform:uppercase'>
-      V1 Excelente &lt;$750 &nbsp;·&nbsp; V3 Objetivo $1.500 &nbsp;·&nbsp; V5 Apagar &gt;$1.875</span>
-    </div>""", unsafe_allow_html=True)
-
-with g2:
-    st.plotly_chart(make_gauge(
-        last_ctr, "CTR (último día)", 5,
-        [1.5, 2.5, 3.5],
-        [RED, AMBER, GREEN, CYANL],
-        suffix="%", fmt_fn=None
-    ), use_container_width=True, config={"displayModeBar": False})
-
-with g3:
-    st.plotly_chart(make_gauge(
-        last_cw, "Conv. Web (último día)", 50,
-        [15, 25, 35],
-        [RED, AMBER, GREEN, CYANL],
-        suffix="%"
-    ), use_container_width=True, config={"displayModeBar": False})
-
-with g4:
-    st.plotly_chart(make_gauge(
-        last_carw, "Cargar Web (último día)", 100,
-        [70, 80, 90],
-        [RED, AMBER, GREEN, CYANL],
-        suffix="%"
-    ), use_container_width=True, config={"displayModeBar": False})
+g1.markdown(indicator_card(
+    "CxResultado FB · Último día", last_cxr, fmt_cop(last_cxr),
+    (last_cxr / 2500) * 100, cxr_color(last_cxr),
+    f"{cxr_tier(last_cxr)} &nbsp;·&nbsp; Objetivo: $1.500 &nbsp;·&nbsp; Alerta: $1.875"
+), unsafe_allow_html=True)
+g2.markdown(indicator_card(
+    "CTR · Último día", last_ctr, f"{last_ctr:.2f}%",
+    (last_ctr / 5) * 100, GREEN if last_ctr >= 2 else AMBER if last_ctr >= 1 else RED,
+    "Bajo &lt;1% &nbsp;·&nbsp; Normal 1–2% &nbsp;·&nbsp; Bueno &gt;2%"
+), unsafe_allow_html=True)
+g3.markdown(indicator_card(
+    "Conv. Web · Último día", last_cw, f"{last_cw:.2f}%",
+    (last_cw / 50) * 100, GREEN if last_cw >= 25 else AMBER if last_cw >= 15 else RED,
+    "Bajo &lt;15% &nbsp;·&nbsp; Normal 15–25% &nbsp;·&nbsp; Bueno &gt;25%"
+), unsafe_allow_html=True)
+g4.markdown(indicator_card(
+    "Cargar Web · Último día", last_carw, f"{last_carw:.2f}%",
+    last_carw, GREEN if last_carw >= 80 else AMBER if last_carw >= 70 else RED,
+    "Bajo &lt;70% &nbsp;·&nbsp; Normal 70–80% &nbsp;·&nbsp; Bueno &gt;80%"
+), unsafe_allow_html=True)
 
 # ── SECTION 4: CHARTS ──────────────────────────────────────────────────────────
 st.markdown('<div class="slabel">Análisis visual</div>', unsafe_allow_html=True)
@@ -494,7 +470,7 @@ st.markdown('<div class="slabel">Análisis visual</div>', unsafe_allow_html=True
 BASE = dict(
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor=f"rgba(20,25,41,0.6)",
     font=dict(family="Inter", color=MUTED, size=11),
-    margin=dict(l=10, r=10, t=45, b=10), height=340,
+    margin=dict(l=10, r=10, t=70, b=10), height=360,
     hovermode="x unified", hoverlabel=dict(bgcolor=CARD2, font_color=WHITE),
     xaxis=dict(gridcolor=BORDER, showgrid=True, zeroline=False,
                tickfont=dict(color=MUTED, size=10)),
