@@ -14,7 +14,7 @@ try:
     CLIENTE     = st.secrets.get("CLIENTE",     "La Fiera Analista")
     TG_API_ID   = st.secrets.get("TG_API_ID",   "")
     TG_API_HASH = st.secrets.get("TG_API_HASH", "")
-    TG_SESSION  = st.secrets.get("TG_SESSION",  "")
+    TG_SESSION  = "".join(str(st.secrets.get("TG_SESSION", "")).split())
     TG_CHANNEL  = st.secrets.get("TG_CHANNEL",  "")
 except Exception:
     SHEET_ID    = "1KszbEw3CX5jWtWxqE_Oy7Bi17IA5ZJr6FfOkCRJ4zH4"
@@ -25,6 +25,7 @@ except Exception:
     TG_API_HASH = ""
     TG_SESSION  = ""
     TG_CHANNEL  = ""
+
 
 # ── PALETTE ────────────────────────────────────────────────────────────────────
 BG      = "#0B0F1A"
