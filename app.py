@@ -1196,6 +1196,12 @@ def _load_reports_disk() -> list:
             with open(json_path, encoding="utf-8") as f:
                 meta = json.load(f)
             df = pd.read_csv(csv_path, keep_default_na=False)
+            # Re-aplicar conversión numérica a columnas de métricas
+            num_keys = ("spend", "results", "cpr", "impressions", "clicks", "ctr", "reach", "freq")
+            for k in num_keys:
+                col = meta.get("cols", {}).get(k)
+                if col and col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
             meta["df"] = df
             for key in ("date_start", "date_end"):
                 if meta.get(key):
