@@ -2899,6 +2899,77 @@ with pg4:
                             f"La irregularidad penaliza el alcance en Telegram.",
                             PINK,"Fija un mínimo de 3-4 posts por semana. Prepara contenido con anticipación para las semanas ocupadas."))
 
+            # ── Engagement rate (reacciones / vistas) ────────────────────────
+            if "reacciones" in df_s.columns and len(df_s) >= 10:
+                df_eng = df_s[df_s["vistas"] > 0].copy()
+                df_eng["eng_rate"] = df_eng["reacciones"] / df_eng["vistas"] * 100
+                avg_eng = float(df_eng["eng_rate"].mean())
+                top_eng = df_eng.nlargest(3, "eng_rate")
+                top_txt = "; ".join(
+                    (str(r.get("texto","")).strip()[:50] or f"Post #{r.get('id','')}")
+                    for _, r in top_eng.iterrows()
+                )
+                if avg_eng < 0.3:
+                    urg_cards.append(_ia_card("🚨","Engagement muy bajo — los posts no generan reacción",
+                        f"Solo el <strong style='color:{PINK}'>{avg_eng:.2f}%</strong> de las vistas termina en una reacción. "
+                        f"El contenido se ve pero no genera emoción ni acción en la audiencia.",
+                        PINK,"Añade preguntas directas al final de los posts, genera debate o comparte opiniones más directas. "
+                             f"Los posts con mejor engagement son: {top_txt}."))
+                elif avg_eng < 0.8:
+                    sem_cards.append(_ia_card("⚡",f"Engagement mejorable ({avg_eng:.2f}% reacciones/vistas)",
+                        f"El canal tiene un engagement promedio de <strong style='color:{WHITE}'>{avg_eng:.2f}%</strong>. "
+                        f"Hay margen para generar más interacción con la audiencia.",
+                        AMBER,"Cierra algunos posts con una pregunta o invita a compartir. "
+                              f"Tus posts con más reacciones tienen en común: {top_txt}."))
+                else:
+                    sug_cards.append(_ia_card("✅",f"Buen engagement ({avg_eng:.2f}% reacciones/vistas)",
+                        f"La audiencia reacciona bien al contenido. "
+                        f"Los posts con más engagement son: <em>{top_txt}</em>.",
+                        GREEN,"Identifica el tono y formato de esos posts y aplícalo a los demás."))
+
+            # ── Consistencia de vistas ────────────────────────────────────────
+            if len(df_s) >= 15:
+                cv = float(df_s["vistas"].std() / df_s["vistas"].mean()) if df_s["vistas"].mean() > 0 else 0
+                p90 = float(df_s["vistas"].quantile(0.9))
+                p10 = float(df_s["vistas"].quantile(0.1))
+                ratio_p = p90 / p10 if p10 > 0 else 0
+                if cv > 0.6 and ratio_p > 3:
+                    sem_cards.append(_ia_card("⚡","Rendimiento muy inconsistente entre posts",
+                        f"Los posts varían mucho: el 10% superior promedia "
+                        f"<strong style='color:{WHITE}'>{p90:.0f} vistas</strong> vs "
+                        f"<strong style='color:{PINK}'>{p10:.0f}</strong> del 10% inferior ({ratio_p:.1f}× diferencia). "
+                        f"No hay una fórmula de contenido clara y repetible.",
+                        AMBER,"Analiza los 5 posts con más vistas y los 5 con menos. ¿Qué los diferencia en formato, tema y hora? "
+                              "Estandariza los elementos de los mejores y descarta los patrones de los peores."))
+                elif cv < 0.3:
+                    sug_cards.append(_ia_card("💡","Vistas muy estables — poco riesgo, poco techo",
+                        f"Las vistas son muy consistentes (variación {cv:.2f}), lo cual es estable pero puede indicar "
+                        f"que el canal ya llegó a un techo con el formato actual.",
+                        CYANL,"Prueba un formato completamente distinto al menos 1 vez por semana: hilo largo, encuesta, contenido polémico o exclusivo. "
+                              "Necesitas un post que rompa el techo para desbloquear un nuevo nivel de alcance."))
+
+            # ── Temas que más enganchan ───────────────────────────────────────
+            if "texto" in df_s.columns and len(df_s) >= 15:
+                stopwords = {"de","la","el","en","y","a","que","los","las","por","con","del","se","un","una",
+                             "es","al","su","lo","más","como","para","ha","si","pero","fue","ya","muy",
+                             "le","o","no","me","te","este","esta","son","hay","sobre","entre","también"}
+                top20_pct = df_s.nlargest(max(5, len(df_s)//5), "vistas")
+                all_words: dict = {}
+                for txt in top20_pct["texto"].dropna():
+                    for w in str(txt).lower().split():
+                        w = w.strip(".,;:!?\"'()[]*/•*#_")
+                        if len(w) > 3 and w not in stopwords:
+                            all_words[w] = all_words.get(w, 0) + 1
+                top_words = sorted(all_words.items(), key=lambda x: x[1], reverse=True)[:6]
+                if top_words:
+                    kw_html = " · ".join(
+                        f"<strong style='color:{CYANL}'>{w}</strong>" for w, _ in top_words
+                    )
+                    sug_cards.append(_ia_card("💡","Temas que más llaman la atención",
+                        f"Las palabras más frecuentes en el top {max(5,len(df_s)//5)} de posts con más vistas: "
+                        f"{kw_html}.",
+                        CYANL,"Construye más posts alrededor de estos temas. Son las temáticas que tu audiencia más consume."))
+
             # ── Tendencia de vistas ───────────────────────────────────────────
             if len(df_s) >= 20:
                 mitad = len(df_s) // 2
