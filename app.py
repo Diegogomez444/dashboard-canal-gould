@@ -2339,7 +2339,12 @@ with pg3:
             cards_html = ""
             for idx, row in df_top.iterrows():
                 txt = str(row.get("texto","") or "").strip()
-                excerpt_raw = (txt[:120]+"…" if len(txt) > 120 else txt) if txt else f"Post #{row.get('id','')}"
+                if txt:
+                    excerpt_raw = txt[:120] + ("…" if len(txt) >= 120 else "")
+                elif row.get("tiene_media", False):
+                    excerpt_raw = "📷  Post multimedia sin texto"
+                else:
+                    excerpt_raw = f"💬  Post #{row.get('id','')}"
                 excerpt   = _html.escape(excerpt_raw)
                 fecha_str = _html.escape(row["fecha"].strftime("%d %b %Y") if pd.notna(row["fecha"]) else "—")
                 vistas_v  = int(row["vistas"])
