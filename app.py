@@ -2453,64 +2453,8 @@ with pg3:
             else:
                 gmin = df_growth["fecha"].dt.date.min()
                 gmax = df_growth["fecha"].dt.date.max()
-                if "tg_g_sel"   not in st.session_state: st.session_state.tg_g_sel   = "Últimos 30 días"
-                if "tg_g_start" not in st.session_state: st.session_state.tg_g_start = max(gmin, gmax - timedelta(days=29))
-                if "tg_g_end"   not in st.session_state: st.session_state.tg_g_end   = gmax
 
-                OPCIONES_G = {
-                    "Ayer":            (gmax, gmax),
-                    "Últimos 7 días":  (gmax - timedelta(days=6),  gmax),
-                    "Últimos 14 días": (gmax - timedelta(days=13), gmax),
-                    "Últimos 30 días": (gmax - timedelta(days=29), gmax),
-                    "Últimos 60 días": (gmax - timedelta(days=59), gmax),
-                    "Últimos 90 días": (gmax - timedelta(days=89), gmax),
-                    "Todo el período": (gmin, gmax),
-                    "Personalizado":   (st.session_state.tg_g_start, st.session_state.tg_g_end),
-                }
-                cur_sel = st.session_state.tg_g_sel
-                if cur_sel in OPCIONES_G and cur_sel != "Personalizado":
-                    cur_s, cur_e = OPCIONES_G[cur_sel]
-                else:
-                    cur_s, cur_e = st.session_state.tg_g_start, st.session_state.tg_g_end
-                cur_s = max(gmin, min(gmax, cur_s)); cur_e = max(gmin, min(gmax, cur_e))
-                if cur_s > cur_e: cur_s = cur_e
-
-                def _fdes(d):
-                    M = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"]
-                    return f"{d.day} {M[d.month-1]} {d.year}"
-
-                rango_txt = _fdes(cur_s) if cur_s == cur_e else f"{_fdes(cur_s)} – {_fdes(cur_e)}"
-                lc, pc = st.columns([4, 3])
-                with lc:
-                    st.markdown(f"<div style='padding-top:.55rem;font-size:.72rem;color:{MUTED}'>"
-                                f"Período: <strong style='color:{CYANL}'>{rango_txt}</strong></div>",
-                                unsafe_allow_html=True)
-                with pc:
-                    with st.popover(f"📅 {rango_txt} ▾", use_container_width=True):
-                        ops = list(OPCIONES_G.keys())
-                        ns = st.radio("Período", ops, index=ops.index(cur_sel) if cur_sel in ops else 2,
-                                      label_visibility="collapsed", key="tg_g_radio")
-                        st.session_state.tg_g_sel = ns
-                        if ns == "Personalizado":
-                            p1, p2 = st.columns(2)
-                            with p1:
-                                sv = st.date_input("Desde", value=st.session_state.tg_g_start,
-                                                   min_value=gmin, max_value=gmax, key="tg_g_ds")
-                                st.session_state.tg_g_start = sv
-                            with p2:
-                                ev = st.date_input("Hasta", value=st.session_state.tg_g_end,
-                                                   min_value=gmin, max_value=gmax, key="tg_g_de")
-                                st.session_state.tg_g_end = ev
-
-                if st.session_state.tg_g_sel != "Personalizado":
-                    g_start, g_end = OPCIONES_G[st.session_state.tg_g_sel]
-                else:
-                    g_start, g_end = st.session_state.tg_g_start, st.session_state.tg_g_end
-                g_start = max(gmin, min(gmax, g_start)); g_end = max(gmin, min(gmax, g_end))
-                if g_start > g_end: g_start = g_end
-
-                dg = df_growth[(df_growth["fecha"].dt.date >= g_start) &
-                               (df_growth["fecha"].dt.date <= g_end)].copy()
+                dg = df_growth.copy()
 
                 neto    = int(dg["net"].sum()) if "net" in dg.columns else int((dg["entradas"]-dg["salidas"]).sum())
                 sub_fin = int(dg["miembros"].iloc[-1]) if not dg.empty else subs
@@ -2594,11 +2538,10 @@ with pg3:
         if stats:
             st.markdown(f'<div style="border-top:1px solid {BORDER};margin:.8rem 0 .5rem 0"></div>', unsafe_allow_html=True)
             st.markdown('<div class="slabel">📊 Estadísticas avanzadas</div>', unsafe_allow_html=True)
-            sa1, sa2, sa3, sa4 = st.columns(4)
+            sa1, sa2, sa3 = st.columns(3)
             sa1.markdown(kcard("Suscriptores actuales", fmt_num(stats.get("subs_actual", subs)), "pu","pu"), unsafe_allow_html=True)
             sa2.markdown(kcard("Suscriptores anterior", fmt_num(stats.get("subs_anterior",0)), "plain"), unsafe_allow_html=True)
             sa3.markdown(kcard("Vistas prom./post",     str(stats.get("vistas_post","—")), "cy","cy"), unsafe_allow_html=True)
-            sa4.markdown(kcard("Reacciones prom./post", str(stats.get("shares_post","—")), "plain"), unsafe_allow_html=True)
 
 # ── FOOTER ─────────────────────────────────────────────────────────────────────
 st.markdown(f"""
