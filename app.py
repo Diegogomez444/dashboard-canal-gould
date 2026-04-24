@@ -2336,36 +2336,37 @@ with pg3:
             medals = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣"]
             mc_colors = [AMBER,"#C0C0C0","#CD7F32",MUTED,MUTED,MUTED,MUTED,MUTED]
 
+            cards_html = ""
             for idx, row in df_top.iterrows():
                 txt = str(row.get("texto","") or "").strip()
                 excerpt_raw = (txt[:120]+"…" if len(txt) > 120 else txt) if txt else f"Post #{row.get('id','')}"
-                excerpt = _html.escape(excerpt_raw)
+                excerpt   = _html.escape(excerpt_raw)
                 fecha_str = _html.escape(row["fecha"].strftime("%d %b %Y") if pd.notna(row["fecha"]) else "—")
                 vistas_v  = int(row["vistas"])
                 react_v   = int(row.get("reacciones", 0)) if pd.notna(row.get("reacciones", 0)) else 0
-                bar_pct   = int(vistas_v / max_v * 100)
-                medal = medals[idx]
+                bar_pct   = max(2, int(vistas_v / max_v * 100))
+                medal  = medals[idx]
                 accent = AMBER if idx == 0 else (MUTED2 if idx > 2 else BORDER)
-                react_html = f'<span style="color:{PINK};font-size:.8rem">❤️ {react_v}</span>' if react_v else ""
-                st.markdown(f"""
-<div style="background:{CARD2};border:1px solid {accent};border-radius:14px;
-  padding:.85rem 1.1rem;margin-bottom:.5rem">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem">
-    <div style="display:flex;align-items:center;gap:.6rem">
-      <span style="font-size:1.1rem">{medal}</span>
-      <span style="color:{MUTED};font-size:.72rem">📅 {fecha_str}</span>
-    </div>
-    <div style="display:flex;gap:1rem;align-items:center">
-      <span style="color:{PURPLEL};font-weight:800;font-size:.9rem">👁 {vistas_v:,}</span>
-      {react_html}
-    </div>
-  </div>
-  <div style="color:{WHITE};font-size:.78rem;line-height:1.6;margin-bottom:.55rem">{excerpt}</div>
-  <div style="background:{BORDER};border-radius:4px;height:4px;overflow:hidden">
-    <div style="background:linear-gradient(90deg,{PURPLE},{CYANL});
-      width:{bar_pct}%;height:100%;border-radius:4px"></div>
-  </div>
-</div>""", unsafe_allow_html=True)
+                react_span = f'<span style="color:{PINK};font-size:.8rem;font-weight:700">❤️&nbsp;{react_v}</span>' if react_v else ""
+                cards_html += (
+                    f'<div style="background:{CARD2};border:1px solid {accent};border-radius:14px;padding:.85rem 1.1rem;margin-bottom:.6rem">'
+                    f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.45rem">'
+                    f'<div style="display:flex;align-items:center;gap:.55rem">'
+                    f'<span style="font-size:1.1rem">{medal}</span>'
+                    f'<span style="color:{MUTED};font-size:.72rem">📅&nbsp;{fecha_str}</span>'
+                    f'</div>'
+                    f'<div style="display:flex;gap:.9rem;align-items:center">'
+                    f'<span style="color:{PURPLEL};font-weight:800;font-size:.9rem">👁&nbsp;{vistas_v:,}</span>'
+                    f'{react_span}'
+                    f'</div>'
+                    f'</div>'
+                    f'<div style="color:{WHITE};font-size:.78rem;line-height:1.55;margin-bottom:.5rem">{excerpt}</div>'
+                    f'<div style="background:{BORDER};border-radius:4px;height:4px;overflow:hidden">'
+                    f'<div style="background:linear-gradient(90deg,{PURPLE},{CYANL});width:{bar_pct}%;height:100%;border-radius:4px"></div>'
+                    f'</div>'
+                    f'</div>'
+                )
+            st.markdown(cards_html, unsafe_allow_html=True)
 
             # ── DOS COLUMNAS: Actividad semanal + Dispersión vistas/reacciones ─
             st.markdown("<div style='height:.3rem'></div>", unsafe_allow_html=True)
