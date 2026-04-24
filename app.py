@@ -6,6 +6,8 @@ from plotly.subplots import make_subplots
 import numpy as np
 from datetime import date, timedelta, datetime
 import io
+import os
+import json
 
 # ── CONFIG ─────────────────────────────────────────────────────────────────────
 try:
@@ -1158,6 +1160,53 @@ with pg1:
 # ══════════════════════════════════════════════════════════════════════════════
 # PESTAÑA 2 — META ADS
 # ══════════════════════════════════════════════════════════════════════════════
+
+REPORTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "meta_reports")
+os.makedirs(REPORTS_DIR, exist_ok=True)
+
+def _safe_fname(name: str) -> str:
+    return "".join(c if c.isalnum() or c in "._-" else "_" for c in name)
+
+def _save_report_disk(entry: dict):
+    base = _safe_fname(entry["name"])
+    entry["df"].to_csv(os.path.join(REPORTS_DIR, base + ".csv"), index=False)
+    meta = {k: v for k, v in entry.items() if k != "df"}
+    meta["date_start"] = meta["date_start"].isoformat() if meta["date_start"] else None
+    meta["date_end"]   = meta["date_end"].isoformat()   if meta["date_end"]   else None
+    with open(os.path.join(REPORTS_DIR, base + ".json"), "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False)
+
+def _delete_report_disk(name: str):
+    base = _safe_fname(name)
+    for ext in (".csv", ".json"):
+        p = os.path.join(REPORTS_DIR, base + ext)
+        if os.path.exists(p):
+            os.remove(p)
+
+def _load_reports_disk() -> list:
+    loaded = []
+    for fn in os.listdir(REPORTS_DIR):
+        if not fn.endswith(".json"):
+            continue
+        json_path = os.path.join(REPORTS_DIR, fn)
+        csv_path  = json_path.replace(".json", ".csv")
+        if not os.path.exists(csv_path):
+            continue
+        try:
+            with open(json_path, encoding="utf-8") as f:
+                meta = json.load(f)
+            df = pd.read_csv(csv_path, keep_default_na=False)
+            meta["df"] = df
+            for key in ("date_start", "date_end"):
+                if meta.get(key):
+                    meta[key] = date.fromisoformat(meta[key])
+                else:
+                    meta[key] = None
+            loaded.append(meta)
+        except Exception:
+            pass
+    return loaded
+
 with pg2:
 
     MESES_ES_S = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
@@ -1204,7 +1253,7 @@ with pg2:
         return f"{d1.day} {M[d1.month-1]} {d1.year} – {d2.day} {M[d2.month-1]} {d2.year}"
 
     if "meta_reports" not in st.session_state:
-        st.session_state.meta_reports = []
+        st.session_state.meta_reports = _load_reports_disk()
     reports = st.session_state.meta_reports
 
     BASE_MA = dict(
@@ -1275,9 +1324,11 @@ with pg2:
                              campaign=col_camp, adset=col_adset, ad=col_ad)
             }
             # Reemplazar si ya existe mismo archivo
+            _delete_report_disk(uploaded_file.name)
             reports = [r for r in reports if r["name"] != uploaded_file.name]
             reports.append(entry)
             st.session_state.meta_reports = reports
+            _save_report_disk(entry)
             st.success(f"✓  {rtype} · {date_label} · {len(df_up)} filas")
         except Exception as e:
             st.error(f"Error leyendo el archivo: {e}")
@@ -1305,6 +1356,7 @@ with pg2:
             rc4.markdown(f"<span style='color:{MUTED};font-size:.72rem'>{r['name'][:28]}</span>",
                          unsafe_allow_html=True)
             if rc5.button("✕", key=f"del_rep_{i}", help="Eliminar reporte"):
+                _delete_report_disk(r["name"])
                 st.session_state.meta_reports.pop(idx_orig)
                 st.rerun()
 
