@@ -498,8 +498,6 @@ label[data-testid="stWidgetLabel"] p{{
 ══════════════════════════════════════════════════════ */
 @media (max-width:900px){{
   .block-container{{padding:1rem 1rem 2rem 1rem!important;}}
-
-  /* Tabs: scroll horizontal, texto compacto */
   .stTabs [data-baseweb="tab-list"]{{
     overflow-x:auto!important;flex-wrap:nowrap!important;
     -webkit-overflow-scrolling:touch!important;
@@ -508,78 +506,131 @@ label[data-testid="stWidgetLabel"] p{{
   .stTabs [data-baseweb="tab"]{{
     font-size:.72rem!important;padding:.38rem .75rem!important;
     white-space:nowrap!important;}}
-
-  /* Columnas: 2 por fila */
-  [data-testid="stHorizontalBlock"]{{flex-wrap:wrap!important;gap:.5rem 0!important;}}
-  [data-testid="column"]{{
-    min-width:calc(50% - .5rem)!important;
-    flex:1 1 calc(50% - .5rem)!important;}}
-
-  /* Header */
-  .hdr{{flex-direction:column;gap:.5rem;padding-bottom:1rem;}}
-  .hdr-right{{text-align:left;}}
-  .hdr-logo{{font-size:1.3rem!important;}}
-
-  /* KPI cards */
-  .kc{{padding:.85rem .9rem;border-radius:12px;}}
-  .kc-val{{font-size:1.15rem!important;}}
-  .kc-lbl{{font-size:.55rem!important;}}
-  .kc-sub{{font-size:.6rem!important;}}
-}}
-
-/* ══════════════════════════════════════════════════════
-   RESPONSIVE — MOBILE  (≤ 540px)
-══════════════════════════════════════════════════════ */
-@media (max-width:540px){{
-  .block-container{{padding:.75rem .5rem 2rem .5rem!important;}}
-
-  /* Tabs más pequeños */
-  .stTabs [data-baseweb="tab"]{{
-    font-size:.62rem!important;padding:.32rem .55rem!important;}}
-
-  /* Columnas: 2 por fila en phone también (legible sin ser 1 columna) */
+  [data-testid="stHorizontalBlock"]{{flex-wrap:wrap!important;gap:.4rem 0!important;}}
   [data-testid="column"]{{
     min-width:calc(50% - .4rem)!important;
     flex:1 1 calc(50% - .4rem)!important;}}
-
-  /* KPI */
-  .kc{{padding:.7rem .75rem;border-radius:10px;}}
-  .kc-val{{font-size:1rem!important;}}
-  .kc-lbl{{font-size:.52rem!important;letter-spacing:.1em!important;}}
-
-  /* Header mínimo */
-  .hdr-logo{{font-size:1.1rem!important;letter-spacing:.12em!important;}}
-  .hdr-dot{{width:6px;height:6px;}}
-  .hdr-sub{{font-size:.55rem!important;}}
-  .hdr-right strong{{font-size:.7rem!important;}}
-
-  /* Slabel */
-  .slabel{{font-size:.52rem!important;margin:1.1rem 0 .6rem 0!important;}}
-
-  /* Botón Actualizar */
-  .stButton>button{{font-size:.65rem!important;padding:.35rem .4rem!important;}}
-
-  /* File uploader compacto */
-  [data-testid="stFileUploader"]{{padding:.6rem!important;}}
-
-  /* Progress bar */
-  .prog-wrap{{padding:.9rem 1rem;}}
-  .prog-title{{font-size:.55rem!important;}}
-  .prog-pct{{font-size:.85rem!important;}}
-  .ps{{font-size:.62rem!important;}}
-
-  /* DataFrames: scroll horizontal */
-  [data-testid="stDataFrame"]{{overflow-x:auto!important;}}
-  [data-testid="stDataFrame"] table{{min-width:500px;}}
+  .hdr{{flex-direction:column;gap:.4rem;padding-bottom:.9rem;}}
+  .hdr-right{{text-align:left;}}
+  .hdr-logo{{font-size:1.3rem!important;}}
+  .kc{{padding:.85rem .9rem;border-radius:12px;}}
+  .kc-val{{font-size:1.2rem!important;}}
+  .kc-lbl{{font-size:.55rem!important;}}
 }}
 
 /* ══════════════════════════════════════════════════════
-   RESPONSIVE — SMALL PHONE  (≤ 380px)
+   RESPONSIVE — MOBILE  (≤ 640px)
+   Todo apila en una sola columna, tipografía ampliada
 ══════════════════════════════════════════════════════ */
-@media (max-width:380px){{
+@media (max-width:640px){{
+  /* Contenedor */
+  .block-container{{padding:.9rem .8rem 4rem .8rem!important;max-width:100%!important;}}
+
+  /* Header compacto */
+  .hdr{{flex-direction:column;gap:.35rem;padding-bottom:.8rem;border-bottom-width:1px;}}
+  .hdr-logo{{font-size:1.15rem!important;letter-spacing:.15em!important;}}
+  .hdr-sub{{font-size:.58rem!important;letter-spacing:.15em!important;}}
+  .hdr-dot{{width:7px;height:7px;}}
+  .hdr-right{{font-size:.65rem!important;}}
+  .hdr-right strong{{font-size:.75rem!important;}}
+
+  /* Tabs: scroll y compactos */
+  .stTabs [data-baseweb="tab-list"]{{
+    overflow-x:auto!important;flex-wrap:nowrap!important;
+    -webkit-overflow-scrolling:touch!important;
+    scrollbar-width:none!important;gap:3px!important;padding:4px 2px!important;}}
+  .stTabs [data-baseweb="tab-list"]::-webkit-scrollbar{{display:none;}}
+  .stTabs [data-baseweb="tab"]{{
+    font-size:.68rem!important;padding:.4rem .7rem!important;
+    white-space:nowrap!important;min-width:auto!important;}}
+
+  /* ── COLUMNAS ──
+     Por defecto: apila (charts, texto, controles)
+     Bloques de 4 hijos (filas de KPIs): cuadrícula 2×2 */
+  [data-testid="stHorizontalBlock"]{{
+    flex-wrap:wrap!important;gap:.5rem 0!important;}}
   [data-testid="column"]{{
-    min-width:100%!important;flex:1 1 100%!important;}}
-  .kc-val{{font-size:.92rem!important;}}
+    width:100%!important;min-width:100%!important;
+    flex:1 1 100%!important;padding:0!important;}}
+  /* 4-column KPI rows → 2x2 grid (usa :has si el navegador lo soporta) */
+  [data-testid="stHorizontalBlock"]:has(>[data-testid="column"]:nth-child(4))
+    [data-testid="column"]{{
+      min-width:calc(50% - .3rem)!important;
+      flex:1 1 calc(50% - .3rem)!important;width:50%!important;}}
+
+  /* KPI cards: más grandes y respirados */
+  .kc{{
+    padding:1rem 1.15rem!important;border-radius:14px!important;
+    margin-bottom:.55rem!important;}}
+  .kc-val{{font-size:1.55rem!important;letter-spacing:-.01em!important;}}
+  .kc-lbl{{font-size:.6rem!important;letter-spacing:.18em!important;margin-bottom:.3rem!important;}}
+  .kc-sub{{font-size:.65rem!important;margin-top:.35rem!important;}}
+  .kc-arr{{font-size:.8rem!important;}}
+
+  /* Section labels */
+  .slabel{{font-size:.55rem!important;margin:1.2rem 0 .75rem 0!important;}}
+
+  /* Botones touch-friendly */
+  .stButton>button{{
+    font-size:.75rem!important;padding:.55rem .6rem!important;
+    min-height:44px!important;border-radius:10px!important;}}
+
+  /* Selectbox, inputs */
+  .stSelectbox>div,
+  [data-testid="stDateInput"]{{font-size:.78rem!important;}}
+
+  /* File uploader */
+  [data-testid="stFileUploader"]{{
+    padding:.75rem!important;border-radius:12px!important;}}
+  [data-testid="stFileUploader"] label{{font-size:.75rem!important;}}
+
+  /* Progress bar pauta */
+  .prog-wrap{{padding:.9rem 1rem!important;border-radius:12px!important;}}
+  .prog-title{{font-size:.58rem!important;}}
+  .prog-pct{{font-size:.95rem!important;}}
+  .prog-bar{{height:10px!important;border-radius:5px!important;}}
+  .ps{{font-size:.65rem!important;padding:.4rem!important;}}
+
+  /* DataFrames: scroll horizontal */
+  [data-testid="stDataFrame"]{{overflow-x:auto!important;font-size:.72rem!important;}}
+  [data-testid="stDataFrame"] table{{min-width:480px;}}
+  [data-testid="stDataFrame"] th,
+  [data-testid="stDataFrame"] td{{padding:.35rem .5rem!important;}}
+
+  /* Plotly: más altura en mobile para que se vean bien */
+  [data-testid="stPlotlyChart"] {{min-height:200px;}}
+
+  /* Metrics Streamlit nativas */
+  [data-testid="stMetric"]{{background:{CARD2};border-radius:12px;padding:.8rem!important;}}
+  [data-testid="stMetricValue"]{{font-size:1.3rem!important;}}
+  [data-testid="stMetricLabel"]{{font-size:.62rem!important;}}
+
+  /* Popovers */
+  [data-testid="stPopover"] button{{font-size:.72rem!important;min-height:42px!important;}}
+
+  /* Expanders */
+  [data-testid="stExpander"] summary{{font-size:.78rem!important;}}
+
+  /* Textos generales */
+  p,li{{font-size:.8rem!important;line-height:1.65!important;}}
+  h1{{font-size:1.3rem!important;}}
+  h2{{font-size:1.1rem!important;}}
+  h3{{font-size:.95rem!important;}}
+
+  /* Ocultar elementos secundarios en mobile */
+  .hdr-right span:first-child{{display:none;}}
+}}
+
+/* ══════════════════════════════════════════════════════
+   RESPONSIVE — TELÉFONO PEQUEÑO  (≤ 400px)
+══════════════════════════════════════════════════════ */
+@media (max-width:400px){{
+  .block-container{{padding:.7rem .6rem 4rem .6rem!important;}}
+  .kc-val{{font-size:1.35rem!important;}}
+  .kc{{padding:.85rem 1rem!important;}}
+  .stTabs [data-baseweb="tab"]{{
+    font-size:.62rem!important;padding:.35rem .55rem!important;}}
+  .hdr-logo{{font-size:1rem!important;letter-spacing:.1em!important;}}
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -594,7 +645,7 @@ components.html("""
     m.name = 'viewport';
     parent.document.head.appendChild(m);
   }
-  m.content = 'width=device-width, initial-scale=1, maximum-scale=1';
+  m.content = 'width=device-width, initial-scale=1.0, viewport-fit=cover';
 })();
 </script>
 """, height=0)
