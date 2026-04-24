@@ -465,8 +465,112 @@ label[data-testid="stWidgetLabel"] p{{
 [data-testid="stFileUploader"]{{
   background:{CARD};border:2px dashed {BORDER};border-radius:14px;padding:1rem;}}
 [data-testid="stFileUploader"]:hover{{border-color:{PURPLEL};}}
+
+/* ══════════════════════════════════════════════════════
+   RESPONSIVE — TABLET  (≤ 900px)
+══════════════════════════════════════════════════════ */
+@media (max-width:900px){{
+  .block-container{{padding:1rem 1rem 2rem 1rem!important;}}
+
+  /* Tabs: scroll horizontal, texto compacto */
+  .stTabs [data-baseweb="tab-list"]{{
+    overflow-x:auto!important;flex-wrap:nowrap!important;
+    -webkit-overflow-scrolling:touch!important;
+    scrollbar-width:none!important;gap:2px!important;padding:4px!important;}}
+  .stTabs [data-baseweb="tab-list"]::-webkit-scrollbar{{display:none;}}
+  .stTabs [data-baseweb="tab"]{{
+    font-size:.72rem!important;padding:.38rem .75rem!important;
+    white-space:nowrap!important;}}
+
+  /* Columnas: 2 por fila */
+  [data-testid="stHorizontalBlock"]{{flex-wrap:wrap!important;gap:.5rem 0!important;}}
+  [data-testid="column"]{{
+    min-width:calc(50% - .5rem)!important;
+    flex:1 1 calc(50% - .5rem)!important;}}
+
+  /* Header */
+  .hdr{{flex-direction:column;gap:.5rem;padding-bottom:1rem;}}
+  .hdr-right{{text-align:left;}}
+  .hdr-logo{{font-size:1.3rem!important;}}
+
+  /* KPI cards */
+  .kc{{padding:.85rem .9rem;border-radius:12px;}}
+  .kc-val{{font-size:1.15rem!important;}}
+  .kc-lbl{{font-size:.55rem!important;}}
+  .kc-sub{{font-size:.6rem!important;}}
+}}
+
+/* ══════════════════════════════════════════════════════
+   RESPONSIVE — MOBILE  (≤ 540px)
+══════════════════════════════════════════════════════ */
+@media (max-width:540px){{
+  .block-container{{padding:.75rem .5rem 2rem .5rem!important;}}
+
+  /* Tabs más pequeños */
+  .stTabs [data-baseweb="tab"]{{
+    font-size:.62rem!important;padding:.32rem .55rem!important;}}
+
+  /* Columnas: 2 por fila en phone también (legible sin ser 1 columna) */
+  [data-testid="column"]{{
+    min-width:calc(50% - .4rem)!important;
+    flex:1 1 calc(50% - .4rem)!important;}}
+
+  /* KPI */
+  .kc{{padding:.7rem .75rem;border-radius:10px;}}
+  .kc-val{{font-size:1rem!important;}}
+  .kc-lbl{{font-size:.52rem!important;letter-spacing:.1em!important;}}
+
+  /* Header mínimo */
+  .hdr-logo{{font-size:1.1rem!important;letter-spacing:.12em!important;}}
+  .hdr-dot{{width:6px;height:6px;}}
+  .hdr-sub{{font-size:.55rem!important;}}
+  .hdr-right strong{{font-size:.7rem!important;}}
+
+  /* Slabel */
+  .slabel{{font-size:.52rem!important;margin:1.1rem 0 .6rem 0!important;}}
+
+  /* Botón Actualizar */
+  .stButton>button{{font-size:.65rem!important;padding:.35rem .4rem!important;}}
+
+  /* File uploader compacto */
+  [data-testid="stFileUploader"]{{padding:.6rem!important;}}
+
+  /* Progress bar */
+  .prog-wrap{{padding:.9rem 1rem;}}
+  .prog-title{{font-size:.55rem!important;}}
+  .prog-pct{{font-size:.85rem!important;}}
+  .ps{{font-size:.62rem!important;}}
+
+  /* DataFrames: scroll horizontal */
+  [data-testid="stDataFrame"]{{overflow-x:auto!important;}}
+  [data-testid="stDataFrame"] table{{min-width:500px;}}
+}}
+
+/* ══════════════════════════════════════════════════════
+   RESPONSIVE — SMALL PHONE  (≤ 380px)
+══════════════════════════════════════════════════════ */
+@media (max-width:380px){{
+  [data-testid="column"]{{
+    min-width:100%!important;flex:1 1 100%!important;}}
+  .kc-val{{font-size:.92rem!important;}}
+}}
 </style>
 """, unsafe_allow_html=True)
+
+# Forzar viewport correcto en móvil (sin este tag el navegador hace zoom-out)
+components.html("""
+<script>
+(function(){
+  var m = parent.document.querySelector('meta[name="viewport"]');
+  if(!m){
+    m = parent.document.createElement('meta');
+    m.name = 'viewport';
+    parent.document.head.appendChild(m);
+  }
+  m.content = 'width=device-width, initial-scale=1, maximum-scale=1';
+})();
+</script>
+""", height=0)
 
 # ── LOAD DATA ──────────────────────────────────────────────────────────────────
 summ     = load_summary()
