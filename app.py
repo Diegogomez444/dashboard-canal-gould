@@ -2931,107 +2931,112 @@ with pg4:
                         f"El canal tiene un balance neto de <strong style='color:{GREEN}'>+{neto_t:,}</strong> suscriptores en el período analizado.",
                         GREEN))
 
-        # ── ANÁLISIS META ADS ─────────────────────────────────────────────────
+        # ── PAUTA → IMPACTO EN EL CANAL ───────────────────────────────────────
         if has_meta:
-            st.markdown(f'<div class="slabel">📘 Pauta Meta Ads</div>', unsafe_allow_html=True)
-            camp_rows = []
-            hook_rows = []
+            st.markdown(f'<div class="slabel">🔗 Pauta → impacto en el canal</div>', unsafe_allow_html=True)
+
+            # Calcular totales de inversión y resultados entre todos los reportes
+            total_spend = 0.0; total_results = 0.0
+            date_min = None; date_max = None
             for r in rep_ia:
                 df_r = r["df"]; c = r["cols"]
-                if c.get("campaign") and c.get("spend") and c.get("results"):
-                    agg = (df_r.groupby(c["campaign"])
-                           .agg(spend=(c["spend"],"sum"), results=(c["results"],"sum"))
-                           .reset_index())
-                    agg.columns = ["campaign","spend","results"]
-                    agg["cpr"] = agg["spend"] / agg["results"].replace(0, np.nan)
-                    camp_rows.append(agg.dropna(subset=["cpr"]))
-                if c.get("ad") and c.get("video_3s") and c.get("impressions"):
-                    tmp = df_r.copy()
-                    tmp["__hook__"] = tmp[c["video_3s"]] / tmp[c["impressions"]].replace(0,np.nan) * 100
-                    tmp["__cpr__"]  = tmp[c["spend"]] / tmp[c["results"]].replace(0,np.nan) if c.get("spend") and c.get("results") else np.nan
-                    top = tmp.nlargest(8,"__hook__")[[c["ad"],"__hook__","__cpr__"]].dropna(subset=["__hook__"])
-                    top.columns = ["ad","hook","cpr"]
-                    hook_rows.append(top)
+                if c.get("spend"):  total_spend   += float(df_r[c["spend"]].sum())
+                if c.get("results"):total_results += float(df_r[c["results"]].sum())
+                if r.get("date_start"):
+                    date_min = r["date_start"] if not date_min else min(date_min, r["date_start"])
+                if r.get("date_end"):
+                    date_max = r["date_end"]   if not date_max else max(date_max, r["date_end"])
 
-            # CPR por campaña
-            if camp_rows:
-                df_cm = pd.concat(camp_rows).groupby("campaign").agg(
-                    spend=("spend","sum"), results=("results","sum")).reset_index()
-                df_cm["cpr"] = df_cm["spend"] / df_cm["results"].replace(0,np.nan)
-                df_cm = df_cm.dropna(subset=["cpr"]).sort_values("cpr")
-                q33 = df_cm["cpr"].quantile(.33); q66 = df_cm["cpr"].quantile(.66)
-                bar_c = [GREEN if v<=q33 else (AMBER if v<=q66 else PINK) for v in df_cm["cpr"]]
-                fig_cm = go.Figure(go.Bar(
-                    x=df_cm["cpr"].values,
-                    y=[str(n)[:45] for n in df_cm["campaign"]],
-                    orientation="h",
-                    marker=dict(color=bar_c, opacity=.88),
-                    text=[f"${v:,.0f}" for v in df_cm["cpr"]],
-                    textposition="outside",
-                    textfont=dict(color=WHITE,size=10),
-                    hovertemplate="<b>%{y}</b><br>CPR $%{x:,.0f}<extra></extra>"
-                ))
-                fig_cm.update_layout(**{**_BASE_IA,"height":max(220,len(df_cm)*38+60)},
-                    title=dict(text="CPR por campaña  (🟢 eficiente · 🟡 medio · 🔴 alto)",
-                               font=dict(color=WHITE,size=12,weight=700)),
-                    xaxis=dict(gridcolor=BORDER,tickfont=dict(color=MUTED,size=9),
-                               tickprefix="$",title=dict(text="Costo por Resultado",font=dict(color=MUTED,size=9))),
-                    yaxis=dict(gridcolor="rgba(0,0,0,0)",tickfont=dict(color=WHITE,size=10)))
-                st.plotly_chart(fig_cm, use_container_width=True, config={"displayModeBar":False})
+            # Crecimiento de suscriptores en el período de los reportes
+            subs_en_periodo = None
+            if not df_grw_ia.empty and date_min and date_max and "net" in df_grw_ia.columns:
+                mask = ((df_grw_ia["fecha"].dt.date >= date_min) &
+                        (df_grw_ia["fecha"].dt.date <= date_max))
+                subs_en_periodo = int(df_grw_ia.loc[mask, "net"].sum())
 
-                best = df_cm.iloc[0]; worst = df_cm.iloc[-1]
-                sem_cards.append(_ia_card("⚡","Campaña estrella detectada",
-                    f"<strong style='color:{WHITE}'>{str(best['campaign'])[:65]}</strong> tiene el CPR más bajo: "
-                    f"<strong style='color:{GREEN}'>${best['cpr']:,.0f}</strong> con {best['results']:,.0f} resultados.",
-                    GREEN,"Considera aumentar el presupuesto de esta campaña para escalar resultados."))
-                if worst["cpr"] > best["cpr"] * 2.2:
-                    urg_cards.append(_ia_card("🚨","Campaña con CPR muy elevado",
-                        f"<strong style='color:{WHITE}'>{str(worst['campaign'])[:65]}</strong> tiene CPR "
-                        f"<strong style='color:{PINK}'>${worst['cpr']:,.0f}</strong> — "
-                        f"{worst['cpr']/best['cpr']:.1f}× más caro que la mejor campaña.",
-                        PINK,"Pausa esta campaña o revisa completamente segmentación y creativos antes de seguir invirtiendo."))
+            # KPIs pauta → canal
+            cpr_val  = total_spend / total_results if total_results > 0 else None
+            cps_val  = (total_spend / subs_en_periodo
+                        if subs_en_periodo and subs_en_periodo > 0 else None)
 
-            # Hook rates
-            if hook_rows:
-                df_hk = pd.concat(hook_rows).drop_duplicates("ad").nlargest(8,"hook")
-                avg_hk = float(df_hk["hook"].mean())
-                fig_hk = go.Figure(go.Bar(
-                    x=df_hk["hook"].values,
-                    y=[str(n)[:48] for n in df_hk["ad"]],
-                    orientation="h",
-                    marker=dict(color=df_hk["hook"].values,
-                                colorscale=[[0,MUTED2],[0.4,PURPLEL],[1,CYANL]],
-                                opacity=.9),
-                    text=[f"{v:.1f}%" for v in df_hk["hook"]],
-                    textposition="outside",
-                    textfont=dict(color=WHITE,size=10),
-                    hovertemplate="<b>%{y}</b><br>Hook rate %{x:.1f}%<extra></extra>"
-                ))
-                fig_hk.update_layout(**{**_BASE_IA,"height":max(220,len(df_hk)*38+60)},
-                    title=dict(text=f"Hook rate por anuncio  (promedio: {avg_hk:.1f}%)",
-                               font=dict(color=WHITE,size=12,weight=700)),
-                    xaxis=dict(gridcolor=BORDER,tickfont=dict(color=MUTED,size=9),ticksuffix="%"),
-                    yaxis=dict(gridcolor="rgba(0,0,0,0)",tickfont=dict(color=WHITE,size=10)))
-                st.plotly_chart(fig_hk, use_container_width=True, config={"displayModeBar":False})
+            k1, k2, k3 = st.columns(3)
+            k1.markdown(kcard("Inversión total pauta", f"${total_spend:,.0f}", "pu","pu"), unsafe_allow_html=True)
+            k2.markdown(kcard("Costo por resultado", f"${cpr_val:,.0f}" if cpr_val else "—", "cy","cy"), unsafe_allow_html=True)
+            k3.markdown(kcard("Costo est. por suscriptor",
+                               f"${cps_val:,.0f}" if cps_val else "—",
+                               "gn" if (cps_val and cps_val < 5000) else "pk",
+                               "gn" if (cps_val and cps_val < 5000) else "pk"),
+                        unsafe_allow_html=True)
 
-                best_hk = df_hk.iloc[0]
-                if avg_hk < 3:
-                    urg_cards.append(_ia_card("🚨",f"Hook rate promedio crítico ({avg_hk:.1f}%)",
-                        f"Solo el <strong style='color:{PINK}'>{avg_hk:.1f}%</strong> de las impresiones "
-                        f"se convierte en reproducción. Los creativos no están capturando atención en los primeros 3 segundos.",
-                        PINK,f"Renueva los creativos: empieza con un dato impactante, una pregunta o el resultado final. "
-                             f"Usa de referencia el estilo de '{str(best_hk['ad'])[:50]}'."))
-                elif avg_hk < 6:
-                    sem_cards.append(_ia_card("⚡",f"Hook rate mejorable ({avg_hk:.1f}%)",
-                        f"El gancho promedio está por debajo del 6% ideal. "
-                        f"El mejor anuncio (<strong style='color:{WHITE}'>{str(best_hk['ad'])[:50]}</strong>) "
-                        f"llega a {best_hk['hook']:.1f}%.",
-                        AMBER,"Testa variantes del mejor creativo actual cambiando solo los primeros 3 segundos."))
-                else:
-                    sug_cards.append(_ia_card("✅",f"Buen hook rate promedio ({avg_hk:.1f}%)",
-                        f"Los creativos están captando bien la atención. "
-                        f"El líder <strong style='color:{WHITE}'>{str(best_hk['ad'])[:50]}</strong> alcanza {best_hk['hook']:.1f}%.",
-                        GREEN,"Mantén el estilo visual y de copy de los mejores hooks en los próximos creativos."))
+            st.markdown("<div style='height:.3rem'></div>", unsafe_allow_html=True)
+
+            # Gráfico pauta vs crecimiento (si hay datos de crecimiento semanales)
+            if not df_grw_ia.empty and "net" in df_grw_ia.columns and has_tg:
+                df_grw_w = (df_grw_ia.copy()
+                            .assign(semana=lambda x: x["fecha"].dt.to_period("W").apply(lambda p: p.start_time.date()))
+                            .groupby("semana")["net"].sum().reset_index())
+                df_tg_w  = (df_tg_ia.groupby("semana")["vistas"].mean().reset_index()
+                            if "semana" in df_tg_ia.columns else pd.DataFrame())
+
+                if len(df_grw_w) >= 4 and not df_tg_w.empty:
+                    df_tg_w["semana"] = pd.to_datetime(df_tg_w["semana"]).dt.date
+                    merged = df_grw_w.merge(df_tg_w, on="semana", how="inner")
+                    if len(merged) >= 4:
+                        fig_pv = make_subplots(specs=[[{"secondary_y": True}]])
+                        fig_pv.add_trace(go.Bar(
+                            x=pd.to_datetime(merged["semana"]), y=merged["net"],
+                            name="Suscriptores neto",
+                            marker=dict(color=[GREEN if v>=0 else PINK for v in merged["net"]], opacity=.8),
+                            hovertemplate="%{x|%d/%m}<br><b>%{y:+,d} subs</b><extra></extra>"
+                        ), secondary_y=False)
+                        fig_pv.add_trace(go.Scatter(
+                            x=pd.to_datetime(merged["semana"]), y=merged["vistas"],
+                            name="Vistas prom.", mode="lines+markers",
+                            line=dict(color=PURPLEL, width=2),
+                            marker=dict(size=5, color=PURPLEL),
+                            hovertemplate="%{x|%d/%m}<br><b>%{y:.0f} vistas</b><extra></extra>"
+                        ), secondary_y=True)
+                        fig_pv.update_layout(
+                            **{k:v for k,v in _BASE_IA.items() if k != "margin"},
+                            margin=dict(l=10,r=10,t=50,b=10), height=270,
+                            title=dict(text="Crecimiento de suscriptores vs Vistas orgánicas por semana",
+                                       font=dict(color=WHITE,size=12,weight=700)),
+                            legend=dict(orientation="h",yanchor="bottom",y=1.02,
+                                        font=dict(color=MUTED,size=10),bgcolor="rgba(0,0,0,0)"))
+                        fig_pv.update_xaxes(gridcolor=BORDER, tickfont=dict(color=MUTED,size=8))
+                        fig_pv.update_yaxes(gridcolor=BORDER, tickfont=dict(color=MUTED,size=8), secondary_y=False,
+                                            title_text="Subs neto", title_font=dict(color=MUTED,size=9))
+                        fig_pv.update_yaxes(gridcolor="rgba(0,0,0,0)", tickfont=dict(color=PURPLEL,size=8),
+                                            secondary_y=True, title_text="Vistas",
+                                            title_font=dict(color=PURPLEL,size=9))
+                        st.plotly_chart(fig_pv, use_container_width=True, config={"displayModeBar":False})
+
+                        # Correlación pauta->crecimiento vs vistas orgánicas
+                        corr_sv = float(merged["net"].corr(merged["vistas"]))
+                        if corr_sv > 0.4:
+                            sug_cards.append(_ia_card("✅","El crecimiento del canal y las vistas van de la mano",
+                                f"Correlación positiva (r={corr_sv:.2f}) entre nuevos suscriptores y vistas orgánicas. "
+                                f"Las semanas donde el canal crece también son las de mayor alcance.",
+                                GREEN,"Mantén consistencia en publicaciones: las semanas activas benefician tanto el crecimiento como el alcance orgánico."))
+                        elif corr_sv < -0.2:
+                            sem_cards.append(_ia_card("⚡","Los nuevos suscriptores no están viendo el contenido",
+                                f"Correlación negativa (r={corr_sv:.2f}): semanas con más suscriptores nuevos tienen menos vistas promedio. "
+                                f"Los suscriptores que llega la pauta pueden no estar enganchados con el contenido.",
+                                AMBER,"Asegúrate de que el contenido del canal esté alineado con lo que prometen los anuncios. Publica un post de bienvenida fijo."))
+
+            # Retención: si la pauta atrae subs pero el neto es bajo
+            if subs_en_periodo is not None and total_results > 0:
+                retencion_pct = subs_en_periodo / total_results * 100
+                if retencion_pct < 30:
+                    urg_cards.append(_ia_card("🚨","Baja retención: la pauta atrae pero el canal no retiene",
+                        f"De los <strong style='color:{WHITE}'>{total_results:,.0f} resultados</strong> generados por la pauta, "
+                        f"el canal solo retuvo <strong style='color:{PINK}'>{subs_en_periodo:,} suscriptores netos</strong> "
+                        f"({retencion_pct:.0f}%). Muchos entran y salen rápido.",
+                        PINK,"El contenido del canal no está cumpliendo las expectativas de los anuncios. Revisa que el tono, tema y frecuencia de publicación coincidan con lo que ofrece la pauta."))
+                elif retencion_pct > 60:
+                    sug_cards.append(_ia_card("✅","Buena retención de suscriptores",
+                        f"El <strong style='color:{GREEN}'>{retencion_pct:.0f}%</strong> de los resultados de pauta se traduce en suscriptores netos reales. El canal está reteniendo bien a quienes llegan.",
+                        GREEN,"Continúa con la misma línea de contenido. La pauta y el canal están alineados."))
 
         # ── ACCIONES PRIORITARIAS ─────────────────────────────────────────────
         st.markdown(f'<div class="slabel">⚡ Acciones prioritarias</div>', unsafe_allow_html=True)
