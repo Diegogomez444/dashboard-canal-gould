@@ -625,7 +625,7 @@ with c_hdr:
       </div>
       <div class="hdr-right">
         <span><span class="hdr-dot"></span>En vivo</span>
-        <strong>{datetime.now().strftime('%d/%m/%Y  %H:%M')}</strong>
+        <strong>{(datetime.utcnow() - timedelta(hours=5)).strftime('%d/%m/%Y  %H:%M')}</strong>
         Última actualización
       </div>
     </div>
@@ -2931,9 +2931,7 @@ with pg4:
                         f"El canal tiene un balance neto de <strong style='color:{GREEN}'>+{neto_t:,}</strong> suscriptores en el período analizado.",
                         GREEN))
 
-        # ── PAUTA → IMPACTO EN EL CANAL ───────────────────────────────────────
-        if has_meta:
-            st.markdown(f'<div class="slabel">🔗 Pauta → impacto en el canal</div>', unsafe_allow_html=True)
+        if False and has_meta:  # sección removida
 
             # Calcular totales de inversión y resultados entre todos los reportes
             total_spend = 0.0; total_results = 0.0
