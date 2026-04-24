@@ -140,6 +140,10 @@ META_COL = {
                     "cpm","coste por 1000 impresiones","costo por 1000 impresiones"],
     "cpp":         ["costo por clic en el enlace","coste por clic en el enlace",
                     "cost per link click","cpc","coste por clic"],
+    "ad_id":       ["id del anuncio","ad id","id de anuncio","identificador del anuncio"],
+    "ad_url":      ["url de vista previa del anuncio","url del anuncio","ad preview link",
+                    "permalink de la publicación","permalink url","url de la publicación",
+                    "post url","enlace de la publicación"],
 }
 SKIP_VALS = {"","nan","total de la cuenta","totales","total","reporting ends","informe terminado"}
 
@@ -1329,6 +1333,8 @@ with pg2:
             col_thruplay  = find_col(df_up, "thruplay")
             col_cpm       = find_col(df_up, "cpm")
             col_cpp       = find_col(df_up, "cpp")
+            col_ad_id     = find_col(df_up, "ad_id")
+            col_ad_url    = find_col(df_up, "ad_url")
 
             for c in [col_spend, col_results, col_cpr, col_impr,
                       col_clicks, col_ctr, col_reach, col_freq,
@@ -1364,7 +1370,8 @@ with pg2:
                              video_plays=col_vplays, video_3s=col_v3s,
                              video_p25=col_vp25, video_p50=col_vp50,
                              video_p75=col_vp75, video_p100=col_vp100,
-                             thruplay=col_thruplay, cpm=col_cpm, cpp=col_cpp)
+                             thruplay=col_thruplay, cpm=col_cpm, cpp=col_cpp,
+                             ad_id=col_ad_id, ad_url=col_ad_url)
             }
             # Reemplazar si ya existe mismo archivo
             _delete_report_disk(uploaded_file.name)
@@ -1442,13 +1449,15 @@ with pg2:
 
         COLORS_PIE = [PURPLE, CYANL, GREEN, PINK, PURPLEL, AMBER, "#9B59B6", "#1ABC9C"]
 
-        def _podium(items, val_label="resultados", val_fmt="{:,.0f}", color=CYANL):
+        def _podium(items, val_label="resultados", val_fmt="{:,.0f}", color=CYANL, urls=None):
             medals = ["🥇", "🥈", "🥉"]
             mc_list = [AMBER, "#C0C0C0", "#CD7F32"]
             cols_p = st.columns(min(len(items), 3))
             for idx, (col_p, (nm, vl)) in enumerate(zip(cols_p, items[:3])):
                 mc = mc_list[idx]
-                col_p.markdown(f"""
+                url = urls[idx] if urls and idx < len(urls) else None
+                with col_p:
+                    st.markdown(f"""
 <div style="background:{CARD2};border:1px solid {mc}55;border-radius:14px;
   padding:1rem .8rem;text-align:center">
   <div style="font-size:1.6rem;line-height:1">{medals[idx]}</div>
@@ -1461,6 +1470,8 @@ with pg2:
     {val_fmt.format(vl)}</div>
   <div style="color:{MUTED};font-size:.64rem;margin-top:.1rem">{val_label}</div>
 </div>""", unsafe_allow_html=True)
+                    if url:
+                        st.link_button("Ver anuncio →", url, use_container_width=True)
 
         def _hbar(df_plot, x_col, y_col, title, fmt_hover,
                   color_lo=PURPLE, color_hi=CYANL, xsuffix="", invert=False, h=300):
@@ -1475,10 +1486,13 @@ with pg2:
                     colorscale=[[0, color_lo], [1, color_hi]], opacity=0.9),
                 hovertemplate=f"<b>%{{y}}</b><br>{fmt_hover}<extra></extra>"
             ))
+            xaxis_cfg = dict(gridcolor=BORDER, tickfont=dict(color=MUTED, size=9),
+                             ticksuffix=xsuffix)
+            if xsuffix == "%":
+                xaxis_cfg["tickformat"] = ".2f"
             fig.update_layout(**{**BASE_MA, "height": h},
                 title=dict(text=title, font=dict(color=WHITE, size=13, weight=700)),
-                xaxis=dict(gridcolor=BORDER, tickfont=dict(color=MUTED, size=9),
-                           ticksuffix=xsuffix),
+                xaxis=xaxis_cfg,
                 yaxis=dict(tickfont=dict(color=WHITE, size=9)))
             return fig
 
@@ -1528,7 +1542,34 @@ with pg2:
             if c0.get("video_p100") and c0.get("video_3s") and c0["video_p100"] in df_g.columns:
                 df_g["__completion__"] = (df_g[c0["video_p100"]] /
                                           df_g[c0["video_3s"]].replace(0, np.nan) * 100)
+            # Normalized retention rates (relative to 3s views)
+            v3 = c0.get("video_3s")
+            for pct_k, lbl in [("video_p25","__ret25__"),("video_p50","__ret50__"),
+                                ("video_p75","__ret75__"),("video_p100","__ret100__")]:
+                if c0.get(pct_k) and v3 and c0[pct_k] in df_g.columns and c0[v3] in df_g.columns:
+                    df_g[lbl] = df_g[c0[pct_k]] / df_g[c0[v3]].replace(0, np.nan) * 100
             return df_all, c0, df_g
+
+        def _ad_url_map(reps):
+            """Builds {ad_name: url} from all reports using ad_url or ad_id column."""
+            result = {}
+            for r in reps:
+                c = r["cols"]; df_r = r["df"]
+                cn = c.get("ad"); cu = c.get("ad_url"); ci = c.get("ad_id")
+                if not cn or cn not in df_r.columns: continue
+                for _, row in df_r.iterrows():
+                    nm = str(row.get(cn, ""))
+                    if not nm or nm in result: continue
+                    url = None
+                    if cu and cu in df_r.columns:
+                        v = str(row.get(cu, ""))
+                        if v and v not in ("", "nan", "None"): url = v
+                    if not url and ci and ci in df_r.columns:
+                        v = str(row.get(ci, "")).split(".")[0].strip()
+                        if v and v.isdigit():
+                            url = f"https://adsmanager.facebook.com/adsmanager/manage/ads?selected_ad_ids={v}"
+                    if url: result[nm] = url
+            return result
 
         # ── TENDENCIAS ────────────────────────────────────────────────────────
         with ma1:
@@ -1715,25 +1756,30 @@ with pg2:
                 st.info("No hay datos de anuncios. Sube un reporte que incluya columna de anuncio.")
             else:
                 _, c0a, df_ag = _build_agg(ad_reps, "ad")
-                col_an  = c0a.get("ad");    col_as_ = c0a.get("spend")
-                col_ar  = c0a.get("results"); col_at = c0a.get("ctr")
+                col_an  = c0a.get("ad");     col_as_ = c0a.get("spend")
+                col_ar  = c0a.get("results"); col_at  = c0a.get("ctr")
                 col_av3 = c0a.get("video_3s"); col_avim = c0a.get("impressions")
                 col_avp25 = c0a.get("video_p25"); col_avp50 = c0a.get("video_p50")
                 col_avp75 = c0a.get("video_p75"); col_avp100 = c0a.get("video_p100")
-                col_atp   = c0a.get("thruplay"); col_avpl = c0a.get("video_plays")
+                col_atp = c0a.get("thruplay"); col_avpl = c0a.get("video_plays")
 
                 if df_ag is not None and col_an:
-                    # Podio top 3
+                    ad_urls = _ad_url_map(ad_reps)
+
+                    # ── TOP 3 RESULTADOS (con link) ───────────────────────────
                     if col_ar and col_ar in df_ag.columns:
                         top3_a = (df_ag[[col_an, col_ar]].dropna()
                                   .query(f"`{col_ar}` > 0")
                                   .sort_values(col_ar, ascending=False).head(3))
                         if not top3_a.empty:
                             st.markdown('<div class="slabel">🏆 Mejores anuncios · Resultados acumulados</div>', unsafe_allow_html=True)
+                            urls_top = [ad_urls.get(nm) for nm in top3_a[col_an]]
                             _podium(list(zip(top3_a[col_an], top3_a[col_ar])),
-                                    val_label="resultados", val_fmt="{:,.0f}", color=CYANL)
+                                    val_label="resultados", val_fmt="{:,.0f}",
+                                    color=CYANL, urls=urls_top)
                             st.markdown("<div style='height:.6rem'></div>", unsafe_allow_html=True)
 
+                    # ── RANKINGS ─────────────────────────────────────────────
                     ac1, ac2 = st.columns(2)
                     with ac1:
                         if col_ar and col_ar in df_ag.columns:
@@ -1750,34 +1796,50 @@ with pg2:
                                 "CPR: $%{x:,.0f}", GREEN, CYANL, invert=True),
                                 use_container_width=True, config={"displayModeBar":False})
 
-                    # CTR por anuncio
                     if col_at and col_at in df_ag.columns:
                         top_ctr_a = df_ag[[col_an, col_at]].dropna().query(f"`{col_at}` > 0")
                         st.plotly_chart(_hbar(top_ctr_a, col_at, col_an,
-                            "CTR por anuncio · Creativos más relevantes · ↑ mejor",
+                            "CTR por anuncio · ↑ mejor",
                             "CTR: %{x:.2f}%", PINK, AMBER, xsuffix="%"),
                             use_container_width=True, config={"displayModeBar":False})
 
                     # ── VIDEO / HOOK ──────────────────────────────────────────
                     has_video = any(c0a.get(k) for k in
-                                    ["video_3s","video_p25","video_p50","video_p75","video_p100","thruplay"])
+                        ["video_3s","video_p25","video_p50","video_p75","video_p100","thruplay"])
                     if has_video:
                         st.markdown(f"""
 <div style="background:linear-gradient(135deg,{PURPLE}22,{CYANL}11);
-  border:1px solid {PURPLE}44;border-radius:12px;padding:.6rem 1rem;margin:.6rem 0">
-  <div style="color:{WHITE};font-weight:700;font-size:.85rem">🎬 Análisis de Video · Hook & Retención</div>
-  <div style="color:{MUTED};font-size:.72rem;margin-top:.15rem">
-    Hook Rate = reproducciones 3s / impresiones · mide qué tan bien engancha el inicio del video</div>
+  border:1px solid {PURPLE}44;border-radius:12px;padding:.6rem 1rem;margin:.8rem 0 .4rem 0">
+  <div style="color:{WHITE};font-weight:700;font-size:.88rem">🎬 Análisis de Video · Hook & Retención</div>
+  <div style="color:{MUTED};font-size:.72rem;margin-top:.1rem">
+    Hook Rate = reproducciones 3s / impresiones &nbsp;·&nbsp;
+    Completado = vistas 100% / reproducciones 3s</div>
 </div>""", unsafe_allow_html=True)
 
+                        # Top 3 por hook rate con link
                         if "__hook_rate__" in df_ag.columns:
                             top3_hk = (df_ag[[col_an, "__hook_rate__"]].dropna()
                                        .query("__hook_rate__ > 0")
                                        .sort_values("__hook_rate__", ascending=False).head(3))
                             if not top3_hk.empty:
-                                st.markdown('<div class="slabel">🎣 Hook Rate · Top 3 anuncios que más enganchan</div>', unsafe_allow_html=True)
+                                st.markdown('<div class="slabel">🎣 Top 3 · Mayor Hook Rate (engancha en los primeros 3s)</div>', unsafe_allow_html=True)
+                                urls_hk = [ad_urls.get(nm) for nm in top3_hk[col_an]]
                                 _podium(list(zip(top3_hk[col_an], top3_hk["__hook_rate__"])),
-                                        val_label="hook rate", val_fmt="{:.1f}%", color=AMBER)
+                                        val_label="hook rate", val_fmt="{:.2f}%",
+                                        color=AMBER, urls=urls_hk)
+                                st.markdown("<div style='height:.4rem'></div>", unsafe_allow_html=True)
+
+                        # Top 3 por completado con link
+                        if "__completion__" in df_ag.columns:
+                            top3_comp = (df_ag[[col_an, "__completion__"]].dropna()
+                                         .query("__completion__ > 0")
+                                         .sort_values("__completion__", ascending=False).head(3))
+                            if not top3_comp.empty:
+                                st.markdown('<div class="slabel">✅ Top 3 · Mayor tasa de completado (ven el video entero)</div>', unsafe_allow_html=True)
+                                urls_comp = [ad_urls.get(nm) for nm in top3_comp[col_an]]
+                                _podium(list(zip(top3_comp[col_an], top3_comp["__completion__"])),
+                                        val_label="% completado", val_fmt="{:.2f}%",
+                                        color=GREEN, urls=urls_comp)
                                 st.markdown("<div style='height:.4rem'></div>", unsafe_allow_html=True)
 
                         vc1, vc2 = st.columns(2)
@@ -1785,30 +1847,63 @@ with pg2:
                             if "__hook_rate__" in df_ag.columns:
                                 hr_d = df_ag[[col_an, "__hook_rate__"]].dropna().query("__hook_rate__ > 0")
                                 st.plotly_chart(_hbar(hr_d, "__hook_rate__", col_an,
-                                    "Hook Rate · ↑ mejor", "Hook: %{x:.1f}%",
-                                    AMBER, GREEN, xsuffix="%"),
+                                    "Hook Rate por anuncio · ↑ mejor",
+                                    "Hook: %{x:.2f}%", AMBER, GREEN, xsuffix="%"),
                                     use_container_width=True, config={"displayModeBar":False})
                         with vc2:
                             if "__completion__" in df_ag.columns:
                                 comp_d = df_ag[[col_an, "__completion__"]].dropna().query("__completion__ > 0")
                                 st.plotly_chart(_hbar(comp_d, "__completion__", col_an,
-                                    "Tasa de completado (100% visto / 3s) · ↑ mejor",
-                                    "Completado: %{x:.1f}%",
-                                    PURPLE, CYANL, xsuffix="%"),
+                                    "Tasa de completado · ↑ mejor",
+                                    "Completado: %{x:.2f}%", PURPLE, CYANL, xsuffix="%"),
                                     use_container_width=True, config={"displayModeBar":False})
 
-                        # Funnel de retención
+                        # Retención por hitos (25/50/75/100%) para top 8 anuncios por hook rate
+                        ret_cols = [(k, l) for k, l in
+                                    [("__ret25__","25%"),("__ret50__","50%"),("__ret75__","75%"),("__ret100__","100%")]
+                                    if k in df_ag.columns]
+                        if ret_cols:
+                            st.markdown('<div class="slabel">% Retención por hito · Top 8 anuncios con más hook</div>', unsafe_allow_html=True)
+                            base_col = "__hook_rate__" if "__hook_rate__" in df_ag.columns else col_ar
+                            if base_col and base_col in df_ag.columns:
+                                top8 = (df_ag[[col_an] + [k for k, _ in ret_cols] + [base_col]]
+                                        .dropna(subset=[base_col])
+                                        .query(f"`{base_col}` > 0")
+                                        .sort_values(base_col, ascending=False)
+                                        .head(8))
+                                top8_names = top8[col_an].apply(lambda x: _trunc(x, 28))
+                                ret_colors = [CYANL, GREEN, AMBER, PINK]
+                                fig_ret = go.Figure()
+                                for idx_r, (rk_col, rk_lbl) in enumerate(ret_cols):
+                                    if rk_col in top8.columns:
+                                        fig_ret.add_trace(go.Bar(
+                                            name=rk_lbl,
+                                            x=top8_names,
+                                            y=top8[rk_col],
+                                            marker_color=ret_colors[idx_r],
+                                            opacity=0.85,
+                                            hovertemplate=f"<b>%{{x}}</b><br>{rk_lbl}: %{{y:.1f}}%<extra></extra>"
+                                        ))
+                                fig_ret.update_layout(**{**BASE_MA, "height": 350},
+                                    barmode="group",
+                                    title=dict(text="% Retención en cada hito (relativo a vistas 3s)",
+                                               font=dict(color=WHITE,size=13,weight=700)),
+                                    xaxis=dict(tickfont=dict(color=WHITE,size=8), tickangle=-25),
+                                    yaxis=dict(gridcolor=BORDER, tickfont=dict(color=MUTED,size=9),
+                                               ticksuffix="%", tickformat=".1f"))
+                                st.plotly_chart(fig_ret, use_container_width=True, config={"displayModeBar":False})
+
+                        # Embudo global
                         funnel_vals, funnel_lbls = [], []
-                        for fc, fl in [(col_avim, "Impresiones"), (col_avpl, "Reproducciones"),
-                                       (col_av3, "3 seg · Hook"),
-                                       (col_avp25, "25% visto"), (col_avp50, "50% visto"),
-                                       (col_avp75, "75% visto"), (col_avp100, "100% visto"),
-                                       (col_atp, "ThruPlay")]:
+                        for fc, fl in [(col_avim,"Impresiones"),(col_avpl,"Reproducciones"),
+                                       (col_av3,"3 seg · Hook"),(col_avp25,"25% visto"),
+                                       (col_avp50,"50% visto"),(col_avp75,"75% visto"),
+                                       (col_avp100,"100% visto"),(col_atp,"ThruPlay")]:
                             if fc and fc in df_ag.columns:
                                 tv = float(df_ag[fc].sum())
                                 if tv > 0: funnel_vals.append(tv); funnel_lbls.append(fl)
                         if len(funnel_vals) >= 3:
-                            st.markdown('<div class="slabel">Embudo de retención de video (acumulado todos los anuncios)</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="slabel">Embudo de retención global · todos los anuncios acumulados</div>', unsafe_allow_html=True)
                             F_COLORS = [PURPLE, PURPLEL, CYANL, CYAN, GREEN, AMBER, PINK, RED]
                             fig_funnel = go.Figure(go.Funnel(
                                 y=funnel_lbls, x=funnel_vals,
@@ -1821,12 +1916,12 @@ with pg2:
                                 paper_bgcolor="rgba(0,0,0,0)",
                                 plot_bgcolor="rgba(20,25,41,0.6)",
                                 font=dict(family="Inter", color=MUTED, size=11),
-                                margin=dict(l=10, r=10, t=20, b=10), height=320,
+                                margin=dict(l=10,r=10,t=20,b=10), height=320,
                                 hoverlabel=dict(bgcolor=CARD2, font_color=WHITE)
                             )
                             st.plotly_chart(fig_funnel, use_container_width=True, config={"displayModeBar":False})
 
-                    # Peores anuncios
+                    # ── PEORES ───────────────────────────────────────────────
                     if "__cpr__" in df_ag.columns:
                         st.markdown('<div class="slabel">⚠️ Mayor CPR · Candidatos a revisar o pausar</div>', unsafe_allow_html=True)
                         worst = (df_ag[[col_an, "__cpr__"]].dropna()
@@ -1846,26 +1941,53 @@ with pg2:
 
         # ── DIAGNÓSTICO ───────────────────────────────────────────────────────
         with ma5:
-            # Ganadores acumulados
+            def _safe_chg(nv, ov):
+                try:
+                    nv, ov = float(nv), float(ov)
+                    if np.isnan(nv) or np.isnan(ov) or ov == 0: return np.nan
+                    return (nv - ov) / ov * 100
+                except Exception: return np.nan
+
+            def _insight_card(title, body, accion, color, priority_lbl):
+                st.markdown(f"""
+<div style="background:{CARD2};border-left:4px solid {color};border-radius:12px;
+  padding:.85rem 1.1rem;margin-bottom:.6rem">
+  <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">
+    <span style="background:{color}22;color:{color};font-size:.62rem;font-weight:800;
+      letter-spacing:.06em;padding:.15rem .5rem;border-radius:20px">{priority_lbl}</span>
+    <span style="color:{WHITE};font-size:.82rem;font-weight:700">{title}</span>
+  </div>
+  <div style="color:{MUTED};font-size:.76rem;line-height:1.7;margin-bottom:.4rem">{body}</div>
+  <div style="background:{color}18;border-radius:8px;padding:.4rem .7rem">
+    <span style="color:{color};font-size:.72rem;font-weight:700">→ Acción: </span>
+    <span style="color:{WHITE};font-size:.72rem">{accion}</span>
+  </div>
+</div>""", unsafe_allow_html=True)
+
+            alta:    list = []  # (title, body, accion)
+            import_: list = []
+            sugier:  list = []
+
+            # ── Ganadores ────────────────────────────────────────────────────
             st.markdown('<div class="slabel">🏆 Ganadores acumulados</div>', unsafe_allow_html=True)
             win_cols_ui = st.columns(3)
+            win_best = {}
             for wi, (rk, lbl, clr) in enumerate([
-                ("campaign", "🎯 Mejor Campaña", PURPLE),
-                ("adset",    "👥 Mejor Público",  CYANL),
-                ("ad",       "🎨 Mejor Anuncio",  GREEN)
+                ("campaign","🎯 Mejor Campaña", PURPLE),
+                ("adset",   "👥 Mejor Público",  CYANL),
+                ("ad",      "🎨 Mejor Anuncio",  GREEN)
             ]):
                 rk_reps = [r for r in reports if r["cols"].get(rk)]
                 if rk_reps:
                     df_rk = pd.concat([r["df"] for r in rk_reps], ignore_index=True)
-                    c_nm  = rk_reps[0]["cols"].get(rk)
-                    c_rs  = rk_reps[0]["cols"].get("results")
+                    c_nm = rk_reps[0]["cols"].get(rk); c_rs = rk_reps[0]["cols"].get("results")
                     if c_nm and c_rs and c_rs in df_rk.columns:
                         grp = df_rk.groupby(c_nm)[c_rs].sum()
-                        bn  = _trunc(str(grp.idxmax()), 38)
-                        bv  = int(grp.max())
+                        bn  = _trunc(str(grp.idxmax()), 38); bv = int(grp.max())
+                        win_best[rk] = (str(grp.idxmax()), bv)
                         win_cols_ui[wi].markdown(f"""
 <div style="background:{CARD2};border:1px solid {clr}44;border-radius:14px;
-  padding:1rem .9rem;text-align:center;height:100%">
+  padding:1rem .9rem;text-align:center">
   <div style="font-size:.76rem;color:{MUTED};margin-bottom:.3rem">{lbl}</div>
   <div style="color:{WHITE};font-size:.74rem;font-weight:600;line-height:1.5;
     min-height:3rem;display:flex;align-items:center;justify-content:center">{bn}</div>
@@ -1877,36 +1999,63 @@ with pg2:
                 else:
                     win_cols_ui[wi].markdown(f'<div style="color:{MUTED};font-size:.75rem">Sin datos</div>', unsafe_allow_html=True)
 
-            st.markdown("<div style='height:.7rem'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='height:.8rem'></div>", unsafe_allow_html=True)
 
-            # Mejor anuncio por hook rate
-            _, c0d, df_dg = _build_agg([r for r in reports if r["cols"].get("ad")], "ad")
-            if df_dg is not None and "__hook_rate__" in df_dg.columns:
-                col_dn = c0d.get("ad")
-                top_hk = (df_dg[[col_dn, "__hook_rate__", "__cpr__"]]
-                           .dropna(subset=[col_dn, "__hook_rate__"])
-                           .query("__hook_rate__ > 0")
-                           .sort_values("__hook_rate__", ascending=False).head(1))
-                if not top_hk.empty:
-                    hk_nm  = _trunc(str(top_hk.iloc[0][col_dn]), 55)
-                    hk_val = top_hk.iloc[0]["__hook_rate__"]
-                    st.markdown(f"""
-<div style="background:{CARD2};border-left:3px solid {AMBER};border-radius:10px;
-  padding:.75rem 1.1rem;margin-bottom:.65rem">
-  <div style="font-size:.82rem;font-weight:700;color:{WHITE};margin-bottom:.15rem">
-    🎬 Creativo con mejor Hook Rate</div>
-  <div style="color:{AMBER};font-size:.85rem;font-weight:700;margin-bottom:.1rem">{hk_nm}</div>
-  <div style="color:{MUTED};font-size:.75rem">Hook Rate: <strong style="color:{AMBER}">{hk_val:.1f}%</strong>
-    — Engancha mejor en los primeros 3 segundos</div>
-</div>""", unsafe_allow_html=True)
+            # ── Cuadrante de eficiencia ───────────────────────────────────────
+            _, c0q, df_q = _build_agg([r for r in reports if r["cols"].get("campaign")], "campaign")
+            if df_q is not None and c0q and c0q.get("results") and "__cpr__" in df_q.columns:
+                col_qn = c0q.get("campaign"); col_qr = c0q.get("results"); col_qs = c0q.get("spend")
+                q_data = df_q[[col_qn, col_qr, "__cpr__"]].dropna().query(f"`{col_qr}` > 0 and __cpr__ > 0")
+                if len(q_data) >= 2:
+                    st.markdown('<div class="slabel">📊 Cuadrante de eficiencia · Campañas</div>', unsafe_allow_html=True)
+                    med_r = float(q_data[col_qr].median()); med_cpr = float(q_data["__cpr__"].median())
+                    sz = (df_q[col_qs].fillna(1) if col_qs and col_qs in df_q.columns else pd.Series([20]*len(q_data)))
+                    sz_norm = ((sz - sz.min()) / (sz.max() - sz.min() + 1) * 40 + 10).fillna(15)
+                    q_labels = q_data[col_qn].apply(lambda x: _trunc(x, 22))
+                    cpr_vals_q = q_data["__cpr__"].values
+                    res_vals_q = q_data[col_qr].values
+                    colors_q = []
+                    for rv, cv in zip(res_vals_q, cpr_vals_q):
+                        if rv >= med_r and cv <= med_cpr:   colors_q.append(GREEN)
+                        elif rv >= med_r and cv > med_cpr:  colors_q.append(AMBER)
+                        elif rv < med_r and cv <= med_cpr:  colors_q.append(CYANL)
+                        else:                                colors_q.append(PINK)
+                    fig_q = go.Figure()
+                    fig_q.add_shape(type="line", x0=med_r, x1=med_r,
+                        y0=float(q_data["__cpr__"].min())*0.9, y1=float(q_data["__cpr__"].max())*1.1,
+                        line=dict(color=BORDER, width=1, dash="dot"))
+                    fig_q.add_shape(type="line", y0=med_cpr, y1=med_cpr,
+                        x0=float(q_data[col_qr].min())*0.9, x1=float(q_data[col_qr].max())*1.1,
+                        line=dict(color=BORDER, width=1, dash="dot"))
+                    for ann, pos in [("⭐ Escalar",GREEN,"top right"),
+                                     ("⚠️ Revisar",PINK,"top left"),
+                                     ("💡 Potencial",CYANL,"bottom right"),
+                                     ("⏸ Pausar",MUTED,"bottom left")]:
+                        xp = float(q_data[col_qr].max())*1.05 if "right" in pos else float(q_data[col_qr].min())*0.92
+                        yp = float(q_data["__cpr__"].max())*1.08 if "top" in pos else float(q_data["__cpr__"].min())*0.88
+                        fig_q.add_annotation(x=xp, y=yp, text=ann,
+                            font=dict(color=pos, size=9), showarrow=False, opacity=0.6)
+                    fig_q.add_trace(go.Scatter(
+                        x=res_vals_q, y=cpr_vals_q, mode="markers+text",
+                        text=q_labels, textposition="top center",
+                        textfont=dict(color=WHITE, size=8),
+                        marker=dict(size=sz_norm.values, color=colors_q, opacity=0.85,
+                            line=dict(width=1, color=WHITE)),
+                        hovertemplate="<b>%{text}</b><br>Resultados: %{x:,.0f}<br>CPR: $%{y:,.0f}<extra></extra>"
+                    ))
+                    fig_q.update_layout(**{**BASE_MA, "height": 360},
+                        title=dict(text="Resultados vs CPR · Verde=Escalar · Rojo=Revisar",
+                                   font=dict(color=WHITE,size=12,weight=700)),
+                        xaxis=dict(title=dict(text="Resultados →", font=dict(color=MUTED,size=10)),
+                                   gridcolor=BORDER, tickfont=dict(color=MUTED,size=9)),
+                        yaxis=dict(title=dict(text="CPR (↓ mejor)", font=dict(color=MUTED,size=10)),
+                                   gridcolor=BORDER, tickfont=dict(color=MUTED,size=9)))
+                    st.plotly_chart(fig_q, use_container_width=True, config={"displayModeBar":False})
 
-            # Tendencias
-            st.markdown('<div class="slabel">📊 Tendencias e insights automáticos</div>', unsafe_allow_html=True)
-            insights: list = []
-
+            # ── Recopilación de insights ──────────────────────────────────────
             if "df_mon" not in dir() or df_mon is None or df_mon.empty:
                 monthly_d: list = []
-                for r in sorted(reports, key=lambda x: x.get("month", "")):
+                for r in sorted(reports, key=lambda x: x.get("month","")):
                     c = r["cols"]; df_r = r["df"]
                     sp = float(df_r[c["spend"]].sum())   if c.get("spend")   else np.nan
                     rs = float(df_r[c["results"]].sum()) if c.get("results") else np.nan
@@ -1916,13 +2065,6 @@ with pg2:
                                       "Inversión": sp, "Resultados": rs, "CPR": cp, "CTR": ct})
                 df_mon = pd.DataFrame(monthly_d).sort_values("MesKey").reset_index(drop=True)
 
-            def _safe_chg(new_v, old_v):
-                try:
-                    nv, ov = float(new_v), float(old_v)
-                    if np.isnan(nv) or np.isnan(ov) or ov == 0: return np.nan
-                    return (nv - ov) / ov * 100
-                except Exception: return np.nan
-
             if len(df_mon) >= 2:
                 last_m = df_mon.iloc[-1]; prev_m = df_mon.iloc[-2]
                 cpr_chg = _safe_chg(last_m["CPR"], prev_m["CPR"])
@@ -1930,82 +2072,151 @@ with pg2:
                 ctr_chg = _safe_chg(last_m["CTR"], prev_m["CTR"])
 
                 if not np.isnan(cpr_chg):
-                    if cpr_chg > 10:
-                        insights.append(("🔴","CPR en alza",
-                            f"El CPR subió **{cpr_chg:.1f}%** de {prev_m['Mes']} a {last_m['Mes']} "
-                            f"({fmt_cop(prev_m['CPR'])} → {fmt_cop(last_m['CPR'])}). Revisar creativos y audiencias."))
+                    if cpr_chg > 20:
+                        alta.append((
+                            f"CPR se disparó +{cpr_chg:.0f}%",
+                            f"Subió de {fmt_cop(prev_m['CPR'])} a {fmt_cop(last_m['CPR'])} entre {prev_m['Mes']} y {last_m['Mes']}. "
+                            f"El costo por resultado está en niveles críticos.",
+                            f"Pausa hoy los 2 anuncios con mayor CPR. Activa una copia del mejor anuncio del mes anterior."))
+                    elif cpr_chg > 10:
+                        import_.append((
+                            f"CPR subiendo +{cpr_chg:.0f}%",
+                            f"El CPR pasó de {fmt_cop(prev_m['CPR'])} a {fmt_cop(last_m['CPR'])}. Tendencia negativa.",
+                            f"Identifica qué anuncios empujaron el costo hacia arriba y ajusta presupuesto hacia los más eficientes."))
                     elif cpr_chg < -10:
-                        insights.append(("🟢","CPR mejorando",
-                            f"El CPR bajó **{abs(cpr_chg):.1f}%** de {prev_m['Mes']} a {last_m['Mes']} "
-                            f"({fmt_cop(prev_m['CPR'])} → {fmt_cop(last_m['CPR'])}). Buena señal de optimización."))
-                    else:
-                        insights.append(("🟡","CPR estable",
-                            f"El CPR se mantuvo estable ({fmt_cop(prev_m['CPR'])} → {fmt_cop(last_m['CPR'])})."))
+                        sugier.append((
+                            f"CPR bajando {abs(cpr_chg):.0f}% — buena señal",
+                            f"El CPR mejoró de {fmt_cop(prev_m['CPR'])} a {fmt_cop(last_m['CPR'])}. "
+                            f"La optimización está funcionando.",
+                            f"Escala el presupuesto en las campañas con mejor CPR para aprovechar el momento."))
 
                 if not np.isnan(res_chg):
-                    if res_chg > 5:
-                        insights.append(("🟢","Resultados creciendo",
-                            f"Subieron **{res_chg:.1f}%** ({int(prev_m['Resultados']):,} → {int(last_m['Resultados']):,})."))
+                    if res_chg < -15:
+                        alta.append((
+                            f"Resultados cayendo {abs(res_chg):.0f}%",
+                            f"Bajaron de {int(prev_m['Resultados']):,} a {int(last_m['Resultados']):,} leads. Caída significativa.",
+                            f"Revisa si la página de destino funciona, si las audiencias están saturadas y si los creativos siguen siendo relevantes."))
                     elif res_chg < -5:
-                        insights.append(("🔴","Resultados cayendo",
-                            f"Cayeron **{abs(res_chg):.1f}%** ({int(prev_m['Resultados']):,} → {int(last_m['Resultados']):,}). Revisar estrategia."))
+                        import_.append((
+                            f"Resultados bajando {abs(res_chg):.0f}%",
+                            f"De {int(prev_m['Resultados']):,} a {int(last_m['Resultados']):,} leads entre {prev_m['Mes']} y {last_m['Mes']}.",
+                            f"Prueba nuevos creativos y amplía el público objetivo para recuperar volumen."))
+                    elif res_chg > 10:
+                        sugier.append((
+                            f"Resultados creciendo +{res_chg:.0f}%",
+                            f"Subieron de {int(prev_m['Resultados']):,} a {int(last_m['Resultados']):,}. Muy buena tendencia.",
+                            f"Identifica qué campaña o creativo está impulsando el crecimiento y asígnale más presupuesto."))
 
-                if not np.isnan(ctr_chg):
-                    if ctr_chg < -15:
-                        insights.append(("🔴","Fatiga creativa detectada",
-                            f"CTR cayó **{abs(ctr_chg):.1f}%** ({prev_m['CTR']:.2f}% → {last_m['CTR']:.2f}%). "
-                            "Señal de saturación de audiencia — renovar creativos."))
-                    elif ctr_chg > 15:
-                        insights.append(("🟢","CTR mejorando",
-                            f"CTR subió **{ctr_chg:.1f}%** ({prev_m['CTR']:.2f}% → {last_m['CTR']:.2f}%). "
-                            "Los creativos están resonando mejor con las audiencias."))
-            else:
-                insights.append(("ℹ️","Pocos datos",
-                    "Sube reportes de al menos **2 meses** para ver análisis de tendencias."))
+                if not np.isnan(ctr_chg) and ctr_chg < -20:
+                    alta.append((
+                        "Fatiga creativa severa",
+                        f"El CTR cayó {abs(ctr_chg):.0f}% ({prev_m['CTR']:.2f}% → {last_m['CTR']:.2f}%). "
+                        "La audiencia ya no reacciona a los anuncios actuales.",
+                        "Renueva el 100% de los creativos activos. Prueba nuevos hooks, formatos y mensajes."))
+                elif not np.isnan(ctr_chg) and ctr_chg < -10:
+                    import_.append((
+                        f"CTR cayendo {abs(ctr_chg):.0f}%",
+                        f"Bajó de {prev_m['CTR']:.2f}% a {last_m['CTR']:.2f}%. Señal de desgaste de creativos.",
+                        "Introduce 2-3 nuevas variantes creativas. Prioriza los hooks que mejor funcionaron."))
 
-            if all_spend > 0 and all_results > 0:
-                insights.append(("📊","Eficiencia histórica global",
-                    f"Total invertido: **{fmt_cop(all_spend)}** · Resultados: **{int(all_results):,}** · "
-                    f"CPR histórico: **{fmt_cop(all_spend/all_results)}** · Meses: **{n_meses}**."))
-
-            # Alertas automáticas
-            _, c0alrt, df_alrt = _build_agg([r for r in reports if r["cols"].get("ad")], "ad")
-            if df_alrt is not None and "__cpr__" in df_alrt.columns:
-                col_alrt_n = c0alrt.get("ad")
-                worst_a = (df_alrt[[col_alrt_n, "__cpr__"]].dropna()
-                            .query("__cpr__ > 0")
-                            .sort_values("__cpr__", ascending=False).head(1))
-                if not worst_a.empty:
-                    wn = _trunc(str(worst_a.iloc[0][col_alrt_n]), 50)
-                    wc = worst_a.iloc[0]["__cpr__"]
-                    insights.append(("⚠️","Anuncio a revisar",
-                        f"**{wn}** tiene el CPR más alto: **{fmt_cop(wc)}**. "
-                        "Considera pausarlo o actualizar el creativo."))
-
+            # Alerta frecuencia alta
             for r in reports:
                 c = r["cols"]; df_r = r["df"]
                 if c.get("frequency") and c["frequency"] in df_r.columns:
                     avg_freq = float(df_r[c["frequency"]].mean())
-                    if avg_freq > 3:
-                        insights.append(("⚠️",f"Frecuencia alta · {r.get('month_label','')}",
-                            f"Frecuencia promedio: **{avg_freq:.1f}**. La audiencia ve el mismo anuncio más de 3 veces — "
-                            "riesgo de fatiga. Ampliar públicos o rotar creativos."))
-                        break
+                    if avg_freq > 4:
+                        alta.append((
+                            f"Frecuencia crítica · {r.get('month_label','')} ({avg_freq:.1f}x)",
+                            f"La audiencia ve tus anuncios en promedio {avg_freq:.1f} veces. Saturación alta.",
+                            "Amplía el público objetivo mínimo en un 30%, agrega exclusiones o cambia los creativos esta semana."))
+                    elif avg_freq > 3:
+                        import_.append((
+                            f"Frecuencia alta · {r.get('month_label','')} ({avg_freq:.1f}x)",
+                            f"Frecuencia promedio de {avg_freq:.1f}. Riesgo de fatiga de audiencia.",
+                            "Considera rotar creativos o ampliar el público para que la frecuencia no suba más."))
+                    break
 
-            COLOR_MAP_D = {"🔴": PINK, "🟢": GREEN, "🟡": AMBER,
-                           "📊": CYANL, "🏆": PURPLEL, "⚠️": AMBER, "ℹ️": MUTED}
-            if not insights:
+            # Alerta peor anuncio por CPR
+            _, c0alrt, df_alrt = _build_agg([r for r in reports if r["cols"].get("ad")], "ad")
+            if df_alrt is not None and "__cpr__" in df_alrt.columns and c0alrt:
+                col_alrt_n = c0alrt.get("ad")
+                worst_alrt = (df_alrt[[col_alrt_n, "__cpr__", c0alrt.get("results","__dummy__") or "__cpr__"]]
+                               .dropna(subset=[col_alrt_n, "__cpr__"])
+                               .query("__cpr__ > 0")
+                               .sort_values("__cpr__", ascending=False).head(1))
+                if not worst_alrt.empty:
+                    wn = _trunc(str(worst_alrt.iloc[0][col_alrt_n]), 50)
+                    wc = worst_alrt.iloc[0]["__cpr__"]
+                    # Compare to average CPR
+                    avg_cpr_ad = float(df_alrt["__cpr__"].mean())
+                    if wc > avg_cpr_ad * 2:
+                        import_.append((
+                            "Anuncio con CPR fuera de rango",
+                            f"'{wn}' tiene un CPR de {fmt_cop(wc)}, más del doble del promedio ({fmt_cop(avg_cpr_ad)}).",
+                            f"Pausa este anuncio o actualiza su creativo. Redistribuye su presupuesto al mejor anuncio."))
+
+            # Sugerencia hook rate bajo
+            if df_alrt is not None and "__hook_rate__" in df_alrt.columns and c0alrt:
+                col_alrt_n = c0alrt.get("ad")
+                avg_hook = float(df_alrt["__hook_rate__"].mean())
+                if avg_hook < 3:
+                    sugier.append((
+                        f"Hook Rate promedio bajo ({avg_hook:.1f}%)",
+                        "Menos del 3% de las personas que ven tus anuncios los reproducen por 3 segundos.",
+                        "Prueba hooks más directos: pregunta al espectador algo, usa texto grande en los primeros 2s, o empieza con el resultado que ofreces."))
+                elif avg_hook < 6:
+                    sugier.append((
+                        f"Hook Rate puede mejorar ({avg_hook:.1f}%)",
+                        "Un Hook Rate entre 3-6% es aceptable pero hay margen de mejora.",
+                        "Toma los 3 mejores hooks y prueba variantes. Cambia el primer frame o el primer mensaje."))
+
+            # Sugerencia completado bajo
+            if df_alrt is not None and "__completion__" in df_alrt.columns:
+                avg_comp = float(df_alrt["__completion__"].mean())
+                if avg_comp < 20:
+                    sugier.append((
+                        f"Tasa de completado baja ({avg_comp:.1f}%)",
+                        "Solo 1 de cada 5 personas que ven los primeros 3s terminan el video.",
+                        "Acorta los videos a menos de 30s. Coloca el mensaje clave antes del segundo 10."))
+
+            # Eficiencia global
+            if all_spend > 0 and all_results > 0:
+                sugier.append((
+                    "Resumen de eficiencia histórica",
+                    f"Total invertido: {fmt_cop(all_spend)} · {int(all_results):,} resultados · "
+                    f"CPR histórico: {fmt_cop(all_spend/all_results)} · {n_meses} mes(es) analizados.",
+                    "Usa este CPR como benchmark. Cualquier campaña por encima de este valor merece atención."))
+
+            # ── Render por prioridades ────────────────────────────────────────
+            if not alta and not import_ and not sugier:
                 st.info("Sube más reportes para generar diagnósticos automáticos.")
             else:
-                for icon, title_i, body_i in insights:
-                    col_i = COLOR_MAP_D.get(icon, MUTED)
+                if alta:
                     st.markdown(f"""
-<div style="background:{CARD2};border-left:3px solid {col_i};border-radius:10px;
-  padding:.75rem 1.1rem;margin-bottom:.65rem">
-  <div style="font-size:.82rem;font-weight:700;color:{WHITE};margin-bottom:.2rem">
-    {icon} {title_i}</div>
-  <div style="font-size:.76rem;color:{MUTED};line-height:1.65">{body_i}</div>
+<div style="background:{RED}18;border:1px solid {RED}55;border-radius:10px;
+  padding:.5rem 1rem;margin:.8rem 0 .4rem 0">
+  <span style="color:{RED};font-size:.8rem;font-weight:800">🚨 PRIORIDAD ALTA — Actuar hoy</span>
 </div>""", unsafe_allow_html=True)
+                    for t, b, a in alta:
+                        _insight_card(t, b, a, RED, "🚨 URGENTE")
+
+                if import_:
+                    st.markdown(f"""
+<div style="background:{AMBER}18;border:1px solid {AMBER}55;border-radius:10px;
+  padding:.5rem 1rem;margin:.8rem 0 .4rem 0">
+  <span style="color:{AMBER};font-size:.8rem;font-weight:800">⚡ IMPORTANTE — Esta semana</span>
+</div>""", unsafe_allow_html=True)
+                    for t, b, a in import_:
+                        _insight_card(t, b, a, AMBER, "⚡ ESTA SEMANA")
+
+                if sugier:
+                    st.markdown(f"""
+<div style="background:{CYANL}18;border:1px solid {CYANL}55;border-radius:10px;
+  padding:.5rem 1rem;margin:.8rem 0 .4rem 0">
+  <span style="color:{CYANL};font-size:.8rem;font-weight:800">💡 SUGERENCIAS — Cuando puedas</span>
+</div>""", unsafe_allow_html=True)
+                    for t, b, a in sugier:
+                        _insight_card(t, b, a, CYANL, "💡 SUGERENCIA")
 
     else:
         st.markdown(f"""
