@@ -2001,56 +2001,72 @@ with pg2:
 
             st.markdown("<div style='height:.8rem'></div>", unsafe_allow_html=True)
 
-            # ── Cuadrante de eficiencia ───────────────────────────────────────
+            # ── Mapa de eficiencia (treemap) ──────────────────────────────────
             _, c0q, df_q = _build_agg([r for r in reports if r["cols"].get("campaign")], "campaign")
             if df_q is not None and c0q and c0q.get("results") and "__cpr__" in df_q.columns:
                 col_qn = c0q.get("campaign"); col_qr = c0q.get("results"); col_qs = c0q.get("spend")
-                q_data = df_q[[col_qn, col_qr, "__cpr__"]].dropna().query(f"`{col_qr}` > 0 and __cpr__ > 0")
+                q_data = (df_q[[col_qn, col_qr, "__cpr__"] +
+                                ([col_qs] if col_qs and col_qs in df_q.columns else [])]
+                           .dropna(subset=[col_qn, col_qr, "__cpr__"])
+                           .query(f"`{col_qr}` > 0 and __cpr__ > 0")
+                           .sort_values(col_qr, ascending=False).head(15))
                 if len(q_data) >= 2:
-                    st.markdown('<div class="slabel">📊 Cuadrante de eficiencia · Campañas</div>', unsafe_allow_html=True)
-                    med_r = float(q_data[col_qr].median()); med_cpr = float(q_data["__cpr__"].median())
-                    sz = (df_q[col_qs].fillna(1) if col_qs and col_qs in df_q.columns else pd.Series([20]*len(q_data)))
-                    sz_norm = ((sz - sz.min()) / (sz.max() - sz.min() + 1) * 40 + 10).fillna(15)
-                    q_labels = q_data[col_qn].apply(lambda x: _trunc(x, 22))
-                    cpr_vals_q = q_data["__cpr__"].values
-                    res_vals_q = q_data[col_qr].values
-                    colors_q = []
-                    for rv, cv in zip(res_vals_q, cpr_vals_q):
-                        if rv >= med_r and cv <= med_cpr:   colors_q.append(GREEN)
-                        elif rv >= med_r and cv > med_cpr:  colors_q.append(AMBER)
-                        elif rv < med_r and cv <= med_cpr:  colors_q.append(CYANL)
-                        else:                                colors_q.append(PINK)
-                    fig_q = go.Figure()
-                    fig_q.add_shape(type="line", x0=med_r, x1=med_r,
-                        y0=float(q_data["__cpr__"].min())*0.9, y1=float(q_data["__cpr__"].max())*1.1,
-                        line=dict(color=BORDER, width=1, dash="dot"))
-                    fig_q.add_shape(type="line", y0=med_cpr, y1=med_cpr,
-                        x0=float(q_data[col_qr].min())*0.9, x1=float(q_data[col_qr].max())*1.1,
-                        line=dict(color=BORDER, width=1, dash="dot"))
-                    for ann, ann_clr, pos in [("⭐ Escalar",GREEN,"top right"),
-                                              ("⚠️ Revisar",PINK,"top left"),
-                                              ("💡 Potencial",CYANL,"bottom right"),
-                                              ("⏸ Pausar",MUTED,"bottom left")]:
-                        xp = float(q_data[col_qr].max())*1.05 if "right" in pos else float(q_data[col_qr].min())*0.92
-                        yp = float(q_data["__cpr__"].max())*1.08 if "top" in pos else float(q_data["__cpr__"].min())*0.88
-                        fig_q.add_annotation(x=xp, y=yp, text=ann,
-                            font=dict(color=ann_clr, size=9), showarrow=False, opacity=0.6)
-                    fig_q.add_trace(go.Scatter(
-                        x=res_vals_q, y=cpr_vals_q, mode="markers+text",
-                        text=q_labels, textposition="top center",
-                        textfont=dict(color=WHITE, size=8),
-                        marker=dict(size=sz_norm.values, color=colors_q, opacity=0.85,
-                            line=dict(width=1, color=WHITE)),
-                        hovertemplate="<b>%{text}</b><br>Resultados: %{x:,.0f}<br>CPR: $%{y:,.0f}<extra></extra>"
+                    st.markdown('<div class="slabel">📊 Mapa de eficiencia · Campañas (área = resultados · color = CPR)</div>', unsafe_allow_html=True)
+                    # Normalizar CPR para colorscale (0=mejor/verde, 1=peor/rojo)
+                    cpr_min = float(q_data["__cpr__"].min())
+                    cpr_max = float(q_data["__cpr__"].max())
+                    cpr_norm = ((q_data["__cpr__"] - cpr_min) / (cpr_max - cpr_min + 1)).fillna(0)
+                    spend_vals = (q_data[col_qs].values if col_qs and col_qs in q_data.columns
+                                  else q_data[col_qr].values)
+                    labels_tm = q_data[col_qn].apply(lambda x: _trunc(x, 24))
+                    fig_tm = go.Figure(go.Treemap(
+                        labels=labels_tm,
+                        parents=[""] * len(q_data),
+                        values=q_data[col_qr].values,
+                        customdata=list(zip(
+                            q_data[col_qr].values,
+                            q_data["__cpr__"].values,
+                            spend_vals
+                        )),
+                        marker=dict(
+                            colors=cpr_norm.values,
+                            colorscale=[[0, GREEN], [0.45, AMBER], [1, PINK]],
+                            showscale=True,
+                            colorbar=dict(
+                                title=dict(text="CPR →", font=dict(color=MUTED, size=10)),
+                                tickvals=[0, 0.5, 1],
+                                ticktext=["Bajo", "Medio", "Alto"],
+                                tickfont=dict(color=MUTED, size=9),
+                                thickness=10, len=0.6
+                            )
+                        ),
+                        texttemplate=(
+                            "<b>%{label}</b><br>"
+                            "%{customdata[0]:,.0f} resultados<br>"
+                            "CPR $%{customdata[1]:,.0f}"
+                        ),
+                        hovertemplate=(
+                            "<b>%{label}</b><br>"
+                            "Resultados: %{customdata[0]:,.0f}<br>"
+                            "CPR: $%{customdata[1]:,.0f}<br>"
+                            "Gasto: $%{customdata[2]:,.0f}"
+                            "<extra></extra>"
+                        ),
+                        textfont=dict(color=WHITE, size=11),
+                        tiling=dict(packing="squarify", pad=3),
                     ))
-                    fig_q.update_layout(**{**BASE_MA, "height": 360},
-                        title=dict(text="Resultados vs CPR · Verde=Escalar · Rojo=Revisar",
-                                   font=dict(color=WHITE,size=12,weight=700)),
-                        xaxis=dict(title=dict(text="Resultados →", font=dict(color=MUTED,size=10)),
-                                   gridcolor=BORDER, tickfont=dict(color=MUTED,size=9)),
-                        yaxis=dict(title=dict(text="CPR (↓ mejor)", font=dict(color=MUTED,size=10)),
-                                   gridcolor=BORDER, tickfont=dict(color=MUTED,size=9)))
-                    st.plotly_chart(fig_q, use_container_width=True, config={"displayModeBar":False})
+                    fig_tm.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        margin=dict(l=0, r=0, t=10, b=0), height=380,
+                        font=dict(family="Inter", color=MUTED),
+                        hoverlabel=dict(bgcolor=CARD2, font_color=WHITE, font_size=12)
+                    )
+                    st.plotly_chart(fig_tm, use_container_width=True, config={"displayModeBar":False})
+                    st.markdown(
+                        f'<div style="color:{MUTED};font-size:.7rem;text-align:right;margin-top:-.4rem">'
+                        f'Verde = CPR bajo (eficiente) &nbsp;·&nbsp; Rojo = CPR alto (revisar) &nbsp;·&nbsp; '
+                        f'Área = cantidad de resultados</div>',
+                        unsafe_allow_html=True)
 
             # ── Recopilación de insights ──────────────────────────────────────
             if "df_mon" not in dir() or df_mon is None or df_mon.empty:
