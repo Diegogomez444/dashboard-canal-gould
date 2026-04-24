@@ -1533,7 +1533,7 @@ with pg2:
                             marker=dict(color=PINK, opacity=0.85),
                             hovertemplate="<b>%{y}</b><br>CPR: $%{x:,.0f}<extra></extra>"
                         ))
-                        fig_worst.update_layout(**BASE_MA, height=260,
+                        fig_worst.update_layout(**{**BASE_MA, "height": 260},
                             title=dict(text="Mayor Costo por Resultado", font=dict(color=WHITE,size=13,weight=700)),
                             xaxis=dict(gridcolor=BORDER, tickfont=dict(color=MUTED,size=9)),
                             yaxis=dict(tickfont=dict(color=WHITE,size=9)))
