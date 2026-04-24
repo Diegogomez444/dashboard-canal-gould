@@ -9,11 +9,6 @@ import io
 import os
 import json
 import html as _html
-try:
-    import anthropic as _anthropic
-    _HAS_ANTHROPIC = True
-except ImportError:
-    _HAS_ANTHROPIC = False
 
 # ── CONFIG ─────────────────────────────────────────────────────────────────────
 try:
@@ -2548,8 +2543,8 @@ with pg3:
             sa2.markdown(kcard("Suscriptores anterior", fmt_num(stats.get("subs_anterior",0)), "plain"), unsafe_allow_html=True)
             sa3.markdown(kcard("Vistas prom./post",     str(stats.get("vistas_post","—")), "cy","cy"), unsafe_allow_html=True)
 
-# ── PESTAÑA IA ────────────────────────────────────────────────────────────────
-def _build_ia_context(reports, tg_data):
+# ── PESTAÑA IA (análisis algorítmico) ────────────────────────────────────────
+def _build_ia_context(reports, tg_data):  # kept for potential future use
     """Construye un resumen de datos para enviar a Claude."""
     lines = []
 
@@ -2711,88 +2706,357 @@ Sé directo, usa números reales del informe, y no uses frases genéricas. Si de
 
 
 with pg4:
+    _BASE_IA = dict(
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(20,25,41,0.6)",
+        font=dict(family="Inter", color=MUTED, size=11),
+        margin=dict(l=10, r=60, t=50, b=10),
+        hoverlabel=dict(bgcolor=CARD2, font_color=WHITE),
+    )
+
+    def _ia_card(icon, title, body, color, accion=None):
+        lbl = {"🚨":"URGENTE","⚡":"ESTA SEMANA","💡":"SUGERENCIA","✅":"BUENA SEÑAL"}.get(icon,"")
+        badge = (f'<span style="background:{color}22;color:{color};font-size:.58rem;font-weight:700;'
+                 f'padding:.1rem .45rem;border-radius:20px;letter-spacing:.1em;margin-right:.4rem">{lbl}</span>'
+                 if lbl else "")
+        act = (f'<div style="background:{color}14;border-left:3px solid {color};border-radius:0 6px 6px 0;'
+               f'padding:.45rem .8rem;margin-top:.55rem;font-size:.73rem;color:{WHITE}">→ {accion}</div>'
+               if accion else "")
+        return (f'<div style="background:{CARD2};border-left:4px solid {color};border-radius:0 10px 10px 0;'
+                f'padding:.8rem 1.1rem;margin-bottom:.5rem">'
+                f'<div style="display:flex;align-items:center;margin-bottom:.28rem">{badge}'
+                f'<span style="font-size:.8rem;font-weight:700;color:{WHITE}">{icon} {title}</span></div>'
+                f'<div style="font-size:.76rem;color:{MUTED};line-height:1.7">{body}</div>{act}</div>')
+
+    rep_ia   = st.session_state.get("meta_reports", [])
+    df_tg_ia = tg.get("df_msg", pd.DataFrame()) if "error" not in tg else pd.DataFrame()
+    subs_ia  = tg.get("subscribers", 0) if "error" not in tg else 0
+    df_grw_ia= tg.get("df_growth", pd.DataFrame()) if "error" not in tg else pd.DataFrame()
+    has_meta = bool(rep_ia)
+    has_tg   = not df_tg_ia.empty
+
+    # Header
+    _n_rep = len(rep_ia)
+    _tg_ok = has_tg
     st.markdown(f"""
 <div style="background:linear-gradient(135deg,{CARD2} 0%,{CARD} 100%);
-  border:1px solid {BORDER};border-radius:16px;padding:1.4rem 1.6rem;margin-bottom:1.2rem">
-  <div style="font-size:1.05rem;font-weight:800;color:{WHITE};letter-spacing:.05em;margin-bottom:.3rem">
-    🤖 Análisis con Inteligencia Artificial
+  border:1px solid {BORDER};border-radius:16px;padding:1.2rem 1.6rem;margin-bottom:1rem">
+  <div style="font-size:1rem;font-weight:800;color:{WHITE};margin-bottom:.25rem">🧠 Análisis Inteligente</div>
+  <div style="font-size:.76rem;color:{MUTED};line-height:1.7">
+    Análisis automático de tus datos de
+    <strong style="color:{CYANL}">Meta Ads</strong> y
+    <strong style="color:{PURPLEL}">Telegram</strong>.
+    Detecta patrones, tendencias y genera recomendaciones accionables.
   </div>
-  <div style="font-size:.78rem;color:{MUTED};line-height:1.7">
-    Claude analiza en conjunto todos tus datos de <strong style="color:{CYANL}">Meta Ads</strong>
-    y <strong style="color:{PURPLEL}">Telegram</strong> para encontrar correlaciones, detectar
-    qué contenido funciona mejor, y darte acciones concretas para crecer el canal y bajar el costo por suscriptor.
+</div>
+<div style="display:flex;gap:.8rem;margin-bottom:1.2rem;flex-wrap:wrap">
+  <div style="background:{CARD2};border:1px solid {'#22c55e44' if _n_rep else BORDER};border-radius:10px;padding:.5rem .9rem;font-size:.73rem">
+    {'✅' if _n_rep else '⬜'} <strong style="color:{WHITE if _n_rep else MUTED}">Meta Ads</strong>
+    <span style="color:{MUTED}"> · {_n_rep} reporte{'s' if _n_rep!=1 else ''}</span>
+  </div>
+  <div style="background:{CARD2};border:1px solid {'#22c55e44' if _tg_ok else BORDER};border-radius:10px;padding:.5rem .9rem;font-size:.73rem">
+    {'✅' if _tg_ok else '⬜'} <strong style="color:{WHITE if _tg_ok else MUTED}">Telegram</strong>
+    <span style="color:{MUTED}"> · {'datos disponibles' if _tg_ok else 'sin conexión'}</span>
   </div>
 </div>""", unsafe_allow_html=True)
 
-    # Verificar API key
-    _ant_key = st.secrets.get("ANTHROPIC_API_KEY", "") if hasattr(st, "secrets") else ""
-    if not _HAS_ANTHROPIC:
-        st.error("Librería `anthropic` no instalada. Agrega `anthropic>=0.40.0` a requirements.txt y redespliega.")
-    elif not _ant_key:
+    if not has_meta and not has_tg:
         st.markdown(f"""
-<div style="background:{CARD2};border:1px dashed {AMBER};border-radius:12px;padding:1.2rem 1.4rem">
-  <div style="color:{AMBER};font-weight:700;font-size:.85rem;margin-bottom:.5rem">⚠️ API Key no configurada</div>
-  <div style="color:{MUTED};font-size:.77rem;line-height:1.8">
-    Para activar el análisis IA, agrega tu clave de Anthropic en los secretos de Streamlit Cloud:<br>
-    <code style="background:{BORDER};padding:.15rem .4rem;border-radius:4px;color:{WHITE}">ANTHROPIC_API_KEY = "sk-ant-..."</code>
+<div style="background:{CARD};border:1px dashed {BORDER};border-radius:12px;
+  padding:1.8rem;text-align:center;margin-top:.5rem">
+  <div style="font-size:2rem;margin-bottom:.5rem">📭</div>
+  <div style="color:{MUTED};font-size:.8rem">
+    No hay datos aún. Sube un reporte de Meta Ads o conecta Telegram para activar el análisis.
   </div>
 </div>""", unsafe_allow_html=True)
     else:
-        # Construir contexto de datos
-        _ia_reports = st.session_state.get("meta_reports", [])
-        _ia_context = _build_ia_context(_ia_reports, tg)
+        urg_cards, sem_cards, sug_cards = [], [], []
 
-        # Mostrar resumen de datos disponibles
-        _n_rep = len(_ia_reports)
-        _tg_ok = "error" not in tg and not tg.get("df_msg", pd.DataFrame()).empty
-        st.markdown(f"""
-<div style="display:flex;gap:.8rem;margin-bottom:1rem;flex-wrap:wrap">
-  <div style="background:{CARD2};border:1px solid {'#22c55e44' if _n_rep>0 else BORDER};border-radius:10px;padding:.55rem 1rem;font-size:.74rem">
-    {'✅' if _n_rep>0 else '⬜'} <strong style="color:{WHITE if _n_rep>0 else MUTED}">Meta Ads</strong>
-    <span style="color:{MUTED}"> · {_n_rep} reporte{'s' if _n_rep!=1 else ''}</span>
-  </div>
-  <div style="background:{CARD2};border:1px solid {'#22c55e44' if _tg_ok else BORDER};border-radius:10px;padding:.55rem 1rem;font-size:.74rem">
-    {'✅' if _tg_ok else '⬜'} <strong style="color:{WHITE if _tg_ok else MUTED}">Telegram</strong>
-    <span style="color:{MUTED}"> · {'datos disponibles' if _tg_ok else 'sin datos'}</span>
-  </div>
+        # ── ANÁLISIS TELEGRAM ─────────────────────────────────────────────────
+        if has_tg:
+            st.markdown(f'<div class="slabel">📲 Contenido Telegram</div>', unsafe_allow_html=True)
+            df_s = df_tg_ia.sort_values("fecha").copy()
+            if "texto" in df_s.columns:
+                df_s["_has_txt"] = df_s["texto"].str.strip().astype(bool)
+            else:
+                df_s["_has_txt"] = False
+
+            # ── Texto vs multimedia ───────────────────────────────────────────
+            con_txt = df_s[df_s["_has_txt"]]
+            sin_txt = df_s[~df_s["_has_txt"]]
+            if len(con_txt) >= 3 and len(sin_txt) >= 3:
+                avg_con = con_txt["vistas"].mean()
+                avg_sin = sin_txt["vistas"].mean()
+                mejor   = "con texto" if avg_con > avg_sin else "multimedia"
+                diff    = abs(avg_con - avg_sin) / min(avg_con, avg_sin) * 100
+                col_txt, col_med = (CYANL, MUTED2) if avg_con > avg_sin else (MUTED2, PURPLEL)
+                fig_tipo = go.Figure(go.Bar(
+                    x=["📝 Posts con texto", "📷 Posts multimedia"],
+                    y=[avg_con, avg_sin],
+                    marker=dict(color=[col_txt, col_med], opacity=.88),
+                    text=[f"{avg_con:.0f}", f"{avg_sin:.0f}"],
+                    textposition="outside",
+                    textfont=dict(color=WHITE, size=13, weight=700),
+                    hovertemplate="%{x}<br><b>%{y:.0f} vistas prom.</b><extra></extra>"
+                ))
+                fig_tipo.update_layout(**{**_BASE_IA, "height": 230, "margin": dict(l=10,r=10,t=45,b=10)},
+                    title=dict(text="Vistas promedio por tipo de post", font=dict(color=WHITE,size=12,weight=700)),
+                    showlegend=False,
+                    xaxis=dict(showgrid=False, tickfont=dict(color=WHITE,size=12)),
+                    yaxis=dict(gridcolor=BORDER, tickfont=dict(color=MUTED,size=9)))
+                st.plotly_chart(fig_tipo, use_container_width=True, config={"displayModeBar":False})
+                if diff > 8:
+                    body = (f"Posts <strong style='color:{WHITE}'>{mejor}</strong> generan "
+                            f"<strong style='color:{CYANL}'>{diff:.0f}% más vistas</strong> "
+                            f"({avg_con:.0f} vs {avg_sin:.0f} prom.)")
+                    if avg_con > avg_sin:
+                        sem_cards.append(_ia_card("⚡","El texto genera más alcance",body,CYANL,
+                            "Incluye siempre 2-3 líneas de análisis o contexto en tus publicaciones."))
+                    else:
+                        sem_cards.append(_ia_card("⚡","El contenido visual tiene más alcance",body,CYANL,
+                            "Prioriza imágenes y videos. Si publicas texto, acompáñalo siempre de imagen."))
+
+            # ── Mejor día de la semana ────────────────────────────────────────
+            if "fecha" in df_s.columns and len(df_s) >= 14:
+                dias_es = {"Monday":"Lun","Tuesday":"Mar","Wednesday":"Mié",
+                           "Thursday":"Jue","Friday":"Vie","Saturday":"Sáb","Sunday":"Dom"}
+                dias_ord= ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+                df_s["_dia"] = df_s["fecha"].dt.day_name()
+                by_dia = (df_s.groupby("_dia")["vistas"].agg(["mean","count"])
+                          .reindex([d for d in dias_ord if d in df_s["_dia"].values])
+                          .dropna())
+                by_dia.index = [dias_es.get(d,d) for d in by_dia.index]
+                if len(by_dia) >= 3:
+                    mejor_dia = by_dia["mean"].idxmax()
+                    peor_dia  = by_dia["mean"].idxmin()
+                    bar_c = [AMBER if d==mejor_dia else (MUTED2 if d==peor_dia else PURPLE)
+                             for d in by_dia.index]
+                    fig_dia = go.Figure(go.Bar(
+                        x=by_dia.index.tolist(), y=by_dia["mean"].values,
+                        marker=dict(color=bar_c, opacity=.88),
+                        text=[f"{v:.0f}" for v in by_dia["mean"].values],
+                        textposition="outside",
+                        textfont=dict(color=WHITE, size=11),
+                        hovertemplate="%{x}<br><b>%{y:.0f} vistas prom.</b><extra></extra>"
+                    ))
+                    fig_dia.update_layout(**{**_BASE_IA,"height":230,"margin":dict(l=10,r=10,t=45,b=10)},
+                        title=dict(text="Vistas promedio por día de publicación",font=dict(color=WHITE,size=12,weight=700)),
+                        showlegend=False,
+                        xaxis=dict(showgrid=False,tickfont=dict(color=WHITE,size=12)),
+                        yaxis=dict(gridcolor=BORDER,tickfont=dict(color=MUTED,size=9)))
+                    st.plotly_chart(fig_dia, use_container_width=True, config={"displayModeBar":False})
+                    mv = by_dia.loc[mejor_dia,"mean"]; pv = by_dia.loc[peor_dia,"mean"]
+                    sug_cards.append(_ia_card("💡",f"Mejor día para publicar: {mejor_dia}",
+                        f"Los posts del <strong style='color:{WHITE}'>{mejor_dia}</strong> promedian "
+                        f"<strong style='color:{AMBER}'>{mv:.0f} vistas</strong> vs "
+                        f"{pv:.0f} del {peor_dia} (el día más flojo).",
+                        AMBER, f"Programa tu contenido más importante para los {mejor_dia}."))
+
+            # ── Frecuencia vs vistas ──────────────────────────────────────────
+            if "semana" in df_s.columns:
+                fvv = (df_s.groupby("semana")
+                       .agg(posts=("id","count"), avg_v=("vistas","mean"))
+                       .reset_index())
+                fvv = fvv[fvv["posts"] >= 1]
+                if len(fvv) >= 5:
+                    corr_fv = float(fvv["posts"].corr(fvv["avg_v"]))
+                    xs = np.linspace(fvv["posts"].min(), fvv["posts"].max(), 60)
+                    z  = np.polyfit(fvv["posts"], fvv["avg_v"], 1)
+                    fig_fvv = go.Figure()
+                    fig_fvv.add_trace(go.Scatter(
+                        x=fvv["posts"], y=fvv["avg_v"], mode="markers",
+                        marker=dict(size=9, color=PURPLEL, opacity=.8,
+                                    line=dict(color=CYANL,width=1)),
+                        hovertemplate="<b>%{x} posts esa semana</b><br>%{y:.0f} vistas prom.<extra></extra>"
+                    ))
+                    fig_fvv.add_trace(go.Scatter(
+                        x=xs, y=np.poly1d(z)(xs), mode="lines",
+                        line=dict(color=CYANL,width=2,dash="dot"), showlegend=False
+                    ))
+                    fig_fvv.update_layout(**{**_BASE_IA,"height":250},
+                        title=dict(text=f"Posts/semana vs Vistas promedio  (correlación r={corr_fv:.2f})",
+                                   font=dict(color=WHITE,size=12,weight=700)),
+                        xaxis=dict(title=dict(text="Posts publicados esa semana",font=dict(color=MUTED,size=9)),
+                                   gridcolor=BORDER,tickfont=dict(color=MUTED,size=9),dtick=1),
+                        yaxis=dict(title=dict(text="Vistas promedio",font=dict(color=MUTED,size=9)),
+                                   gridcolor=BORDER,tickfont=dict(color=MUTED,size=9)))
+                    st.plotly_chart(fig_fvv, use_container_width=True, config={"displayModeBar":False})
+
+                    opt_n = int(fvv.groupby("posts")["avg_v"].mean().idxmax())
+                    sem_bajas = int((fvv["posts"] <= 1).sum())
+                    pct_bajas = sem_bajas * 100 // len(fvv)
+                    if corr_fv > 0.25:
+                        sem_cards.append(_ia_card("⚡","Publicar más = más vistas",
+                            f"Correlación positiva (r={corr_fv:.2f}). Las semanas con "
+                            f"<strong style='color:{CYANL}'>{opt_n} posts</strong> tuvieron el mejor rendimiento.",
+                            GREEN, f"Apunta a {opt_n} posts por semana de forma constante."))
+                    elif corr_fv < -0.25:
+                        sug_cards.append(_ia_card("💡","La frecuencia no es el cuello de botella",
+                            f"Más posts no genera más vistas (r={corr_fv:.2f}). La calidad importa más que la cantidad.",
+                            AMBER,"Enfócate en mejorar la calidad y el gancho de cada publicación."))
+                    if pct_bajas > 30:
+                        urg_cards.append(_ia_card("🚨",f"{pct_bajas}% de semanas con muy poca actividad",
+                            f"<strong style='color:{PINK}'>{sem_bajas} semanas</strong> con 1 post o menos. "
+                            f"La irregularidad penaliza el alcance en Telegram.",
+                            PINK,"Fija un mínimo de 3-4 posts por semana. Prepara contenido con anticipación para las semanas ocupadas."))
+
+            # ── Tendencia de vistas ───────────────────────────────────────────
+            if len(df_s) >= 20:
+                mitad = len(df_s) // 2
+                rec_v = df_s.tail(mitad)["vistas"].mean()
+                ant_v = df_s.head(mitad)["vistas"].mean()
+                delta = (rec_v - ant_v) / ant_v * 100
+                if delta > 10:
+                    sem_cards.append(_ia_card("✅",f"Vistas en tendencia alcista (+{delta:.0f}%)",
+                        f"Los posts recientes promedian <strong style='color:{GREEN}'>{rec_v:.0f} vistas</strong> "
+                        f"vs {ant_v:.0f} en el período anterior. El contenido está ganando tracción.",
+                        GREEN,"Analiza qué tienen en común tus últimos posts exitosos y replica esa fórmula."))
+                elif delta < -10:
+                    urg_cards.append(_ia_card("🚨",f"Vistas en caída ({delta:.0f}%)",
+                        f"Los posts recientes promedian <strong style='color:{PINK}'>{rec_v:.0f} vistas</strong> "
+                        f"vs {ant_v:.0f} anteriormente. El alcance orgánico está cayendo.",
+                        PINK,"Varía formatos y temáticas. Revisa si la frecuencia de publicación bajó en las últimas semanas."))
+
+            # ── Crecimiento suscriptores ──────────────────────────────────────
+            if not df_grw_ia.empty and "net" in df_grw_ia.columns:
+                neto_t   = int(df_grw_ia["net"].sum())
+                dias_neg = int((df_grw_ia["net"] < 0).sum())
+                pct_neg  = dias_neg * 100 // max(len(df_grw_ia), 1)
+                if pct_neg > 40:
+                    urg_cards.append(_ia_card("🚨",f"{pct_neg}% de los días con pérdida de suscriptores",
+                        f"El canal pierde suscriptores en <strong style='color:{PINK}'>{dias_neg} de {len(df_grw_ia)} días</strong>. "
+                        f"La tasa de abandono supera la de adquisición en muchos períodos.",
+                        PINK,"El contenido puede no estar cumpliendo expectativas. Revisa qué posts coinciden con los días de más salidas."))
+                elif neto_t > 0:
+                    sug_cards.append(_ia_card("✅",f"Crecimiento neto positivo (+{neto_t:,} suscriptores)",
+                        f"El canal tiene un balance neto de <strong style='color:{GREEN}'>+{neto_t:,}</strong> suscriptores en el período analizado.",
+                        GREEN))
+
+        # ── ANÁLISIS META ADS ─────────────────────────────────────────────────
+        if has_meta:
+            st.markdown(f'<div class="slabel">📘 Pauta Meta Ads</div>', unsafe_allow_html=True)
+            camp_rows = []
+            hook_rows = []
+            for r in rep_ia:
+                df_r = r["df"]; c = r["cols"]
+                if c.get("campaign") and c.get("spend") and c.get("results"):
+                    agg = (df_r.groupby(c["campaign"])
+                           .agg(spend=(c["spend"],"sum"), results=(c["results"],"sum"))
+                           .reset_index())
+                    agg.columns = ["campaign","spend","results"]
+                    agg["cpr"] = agg["spend"] / agg["results"].replace(0, np.nan)
+                    camp_rows.append(agg.dropna(subset=["cpr"]))
+                if c.get("ad") and c.get("video_3s") and c.get("impressions"):
+                    tmp = df_r.copy()
+                    tmp["__hook__"] = tmp[c["video_3s"]] / tmp[c["impressions"]].replace(0,np.nan) * 100
+                    tmp["__cpr__"]  = tmp[c["spend"]] / tmp[c["results"]].replace(0,np.nan) if c.get("spend") and c.get("results") else np.nan
+                    top = tmp.nlargest(8,"__hook__")[[c["ad"],"__hook__","__cpr__"]].dropna(subset=["__hook__"])
+                    top.columns = ["ad","hook","cpr"]
+                    hook_rows.append(top)
+
+            # CPR por campaña
+            if camp_rows:
+                df_cm = pd.concat(camp_rows).groupby("campaign").agg(
+                    spend=("spend","sum"), results=("results","sum")).reset_index()
+                df_cm["cpr"] = df_cm["spend"] / df_cm["results"].replace(0,np.nan)
+                df_cm = df_cm.dropna(subset=["cpr"]).sort_values("cpr")
+                q33 = df_cm["cpr"].quantile(.33); q66 = df_cm["cpr"].quantile(.66)
+                bar_c = [GREEN if v<=q33 else (AMBER if v<=q66 else PINK) for v in df_cm["cpr"]]
+                fig_cm = go.Figure(go.Bar(
+                    x=df_cm["cpr"].values,
+                    y=[str(n)[:45] for n in df_cm["campaign"]],
+                    orientation="h",
+                    marker=dict(color=bar_c, opacity=.88),
+                    text=[f"${v:,.0f}" for v in df_cm["cpr"]],
+                    textposition="outside",
+                    textfont=dict(color=WHITE,size=10),
+                    hovertemplate="<b>%{y}</b><br>CPR $%{x:,.0f}<extra></extra>"
+                ))
+                fig_cm.update_layout(**{**_BASE_IA,"height":max(220,len(df_cm)*38+60)},
+                    title=dict(text="CPR por campaña  (🟢 eficiente · 🟡 medio · 🔴 alto)",
+                               font=dict(color=WHITE,size=12,weight=700)),
+                    xaxis=dict(gridcolor=BORDER,tickfont=dict(color=MUTED,size=9),
+                               tickprefix="$",title=dict(text="Costo por Resultado",font=dict(color=MUTED,size=9))),
+                    yaxis=dict(gridcolor="rgba(0,0,0,0)",tickfont=dict(color=WHITE,size=10)))
+                st.plotly_chart(fig_cm, use_container_width=True, config={"displayModeBar":False})
+
+                best = df_cm.iloc[0]; worst = df_cm.iloc[-1]
+                sem_cards.append(_ia_card("⚡","Campaña estrella detectada",
+                    f"<strong style='color:{WHITE}'>{str(best['campaign'])[:65]}</strong> tiene el CPR más bajo: "
+                    f"<strong style='color:{GREEN}'>${best['cpr']:,.0f}</strong> con {best['results']:,.0f} resultados.",
+                    GREEN,"Considera aumentar el presupuesto de esta campaña para escalar resultados."))
+                if worst["cpr"] > best["cpr"] * 2.2:
+                    urg_cards.append(_ia_card("🚨","Campaña con CPR muy elevado",
+                        f"<strong style='color:{WHITE}'>{str(worst['campaign'])[:65]}</strong> tiene CPR "
+                        f"<strong style='color:{PINK}'>${worst['cpr']:,.0f}</strong> — "
+                        f"{worst['cpr']/best['cpr']:.1f}× más caro que la mejor campaña.",
+                        PINK,"Pausa esta campaña o revisa completamente segmentación y creativos antes de seguir invirtiendo."))
+
+            # Hook rates
+            if hook_rows:
+                df_hk = pd.concat(hook_rows).drop_duplicates("ad").nlargest(8,"hook")
+                avg_hk = float(df_hk["hook"].mean())
+                fig_hk = go.Figure(go.Bar(
+                    x=df_hk["hook"].values,
+                    y=[str(n)[:48] for n in df_hk["ad"]],
+                    orientation="h",
+                    marker=dict(color=df_hk["hook"].values,
+                                colorscale=[[0,MUTED2],[0.4,PURPLEL],[1,CYANL]],
+                                opacity=.9),
+                    text=[f"{v:.1f}%" for v in df_hk["hook"]],
+                    textposition="outside",
+                    textfont=dict(color=WHITE,size=10),
+                    hovertemplate="<b>%{y}</b><br>Hook rate %{x:.1f}%<extra></extra>"
+                ))
+                fig_hk.update_layout(**{**_BASE_IA,"height":max(220,len(df_hk)*38+60)},
+                    title=dict(text=f"Hook rate por anuncio  (promedio: {avg_hk:.1f}%)",
+                               font=dict(color=WHITE,size=12,weight=700)),
+                    xaxis=dict(gridcolor=BORDER,tickfont=dict(color=MUTED,size=9),ticksuffix="%"),
+                    yaxis=dict(gridcolor="rgba(0,0,0,0)",tickfont=dict(color=WHITE,size=10)))
+                st.plotly_chart(fig_hk, use_container_width=True, config={"displayModeBar":False})
+
+                best_hk = df_hk.iloc[0]
+                if avg_hk < 3:
+                    urg_cards.append(_ia_card("🚨",f"Hook rate promedio crítico ({avg_hk:.1f}%)",
+                        f"Solo el <strong style='color:{PINK}'>{avg_hk:.1f}%</strong> de las impresiones "
+                        f"se convierte en reproducción. Los creativos no están capturando atención en los primeros 3 segundos.",
+                        PINK,f"Renueva los creativos: empieza con un dato impactante, una pregunta o el resultado final. "
+                             f"Usa de referencia el estilo de '{str(best_hk['ad'])[:50]}'."))
+                elif avg_hk < 6:
+                    sem_cards.append(_ia_card("⚡",f"Hook rate mejorable ({avg_hk:.1f}%)",
+                        f"El gancho promedio está por debajo del 6% ideal. "
+                        f"El mejor anuncio (<strong style='color:{WHITE}'>{str(best_hk['ad'])[:50]}</strong>) "
+                        f"llega a {best_hk['hook']:.1f}%.",
+                        AMBER,"Testa variantes del mejor creativo actual cambiando solo los primeros 3 segundos."))
+                else:
+                    sug_cards.append(_ia_card("✅",f"Buen hook rate promedio ({avg_hk:.1f}%)",
+                        f"Los creativos están captando bien la atención. "
+                        f"El líder <strong style='color:{WHITE}'>{str(best_hk['ad'])[:50]}</strong> alcanza {best_hk['hook']:.1f}%.",
+                        GREEN,"Mantén el estilo visual y de copy de los mejores hooks en los próximos creativos."))
+
+        # ── ACCIONES PRIORITARIAS ─────────────────────────────────────────────
+        st.markdown(f'<div class="slabel">⚡ Acciones prioritarias</div>', unsafe_allow_html=True)
+        if not urg_cards and not sem_cards and not sug_cards:
+            st.markdown(f"""
+<div style="background:{CARD2};border:1px dashed {BORDER};border-radius:12px;padding:1.2rem;
+  text-align:center;color:{MUTED};font-size:.8rem">
+  No hay suficientes datos para generar recomendaciones. Sube reportes de Meta Ads con más historial.
 </div>""", unsafe_allow_html=True)
-
-        ia_col1, ia_col2 = st.columns([2, 1])
-        with ia_col1:
-            if st.button("🤖  Generar análisis completo", type="primary", use_container_width=True,
-                         help="Llama a Claude para analizar todos los datos en conjunto"):
-                with st.spinner("Claude está analizando tus datos..."):
-                    try:
-                        _result = _run_ia_analysis(_ia_context, _ant_key)
-                        st.session_state["ia_result"] = _result
-                        st.session_state["ia_ts"] = datetime.now().strftime("%d/%m/%Y %H:%M")
-                    except Exception as _e:
-                        st.error(f"Error al llamar a la API: {_e}")
-
-        with ia_col2:
-            if "ia_result" in st.session_state:
-                st.markdown(f"<div style='font-size:.68rem;color:{MUTED};padding-top:.6rem;text-align:right'>"
-                            f"Último análisis: {st.session_state.get('ia_ts','—')}</div>",
+        else:
+            if urg_cards:
+                st.markdown(f'<div style="font-size:.68rem;font-weight:700;color:{PINK};'
+                            f'letter-spacing:.15em;margin:.5rem 0 .4rem 0">🚨 URGENTE — ATENDER HOY</div>',
                             unsafe_allow_html=True)
-
-        # Mostrar resultado
-        if "ia_result" in st.session_state:
-            st.markdown("<div style='height:.4rem'></div>", unsafe_allow_html=True)
-            st.markdown(f"""
-<div style="background:{CARD2};border:1px solid {BORDER};border-radius:14px;
-  padding:1.5rem 1.8rem;line-height:1.75;font-size:.82rem">""",
-                unsafe_allow_html=True)
-            st.markdown(st.session_state["ia_result"])
-            st.markdown("</div>", unsafe_allow_html=True)
-        elif _n_rep == 0 and not _tg_ok:
-            st.markdown(f"""
-<div style="background:{CARD};border:1px dashed {BORDER};border-radius:12px;
-  padding:1.5rem;text-align:center;margin-top:.5rem">
-  <div style="font-size:2rem;margin-bottom:.5rem">📭</div>
-  <div style="color:{MUTED};font-size:.8rem">
-    No hay datos aún. Sube un reporte de Meta Ads o conecta Telegram para que la IA pueda analizar.
-  </div>
-</div>""", unsafe_allow_html=True)
+                st.markdown("".join(urg_cards), unsafe_allow_html=True)
+            if sem_cards:
+                st.markdown(f'<div style="font-size:.68rem;font-weight:700;color:{AMBER};'
+                            f'letter-spacing:.15em;margin:.9rem 0 .4rem 0">⚡ ESTA SEMANA</div>',
+                            unsafe_allow_html=True)
+                st.markdown("".join(sem_cards), unsafe_allow_html=True)
+            if sug_cards:
+                st.markdown(f'<div style="font-size:.68rem;font-weight:700;color:{CYANL};'
+                            f'letter-spacing:.15em;margin:.9rem 0 .4rem 0">💡 SUGERENCIAS</div>',
+                            unsafe_allow_html=True)
+                st.markdown("".join(sug_cards), unsafe_allow_html=True)
 
 # ── FOOTER ─────────────────────────────────────────────────────────────────────
 st.markdown(f"""
