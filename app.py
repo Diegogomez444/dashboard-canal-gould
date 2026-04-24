@@ -1055,26 +1055,49 @@ with pg2:
     MESES_ES_S = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
 
     def _month_label(ym):
-        y, m = ym.split("-")
-        return f"{MESES_ES_S[int(m)-1]} {y}"
+        try:
+            y, m = ym.split("-")
+            return f"{MESES_ES_S[int(m)-1]} {y}"
+        except Exception:
+            return ym
 
-    def _gen_months(n=24):
-        result = []
-        yr, mo = date.today().year, date.today().month
-        for _ in range(n):
-            mo -= 1
-            if mo == 0:
-                mo = 12
-                yr -= 1
-            result.append(f"{yr}-{mo:02d}")
-        return result
+    def _detect_date_range(df):
+        """Busca columnas de fecha en el CSV y devuelve (min_date, max_date)."""
+        keywords = ["date", "fecha", "start", "stop", "inicio", "fin",
+                    "day", "semana", "week", "month", "mes", "periodo", "período"]
+        best_min = best_max = None
+        for col in df.columns:
+            if any(k in col.lower() for k in keywords):
+                try:
+                    parsed = pd.to_datetime(df[col], errors="coerce", dayfirst=True)
+                    valid = parsed.dropna()
+                    if valid.empty:
+                        continue
+                    cmin, cmax = valid.min().date(), valid.max().date()
+                    if best_min is None or cmin < best_min:
+                        best_min = cmin
+                    if best_max is None or cmax > best_max:
+                        best_max = cmax
+                except Exception:
+                    pass
+        return best_min, best_max
+
+    def _fmt_dr(d1, d2):
+        """Formatea un rango de fechas en español."""
+        if d1 is None:
+            return "Sin fechas"
+        M = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+        if d1 == d2:
+            return f"{d1.day} {M[d1.month-1]} {d1.year}"
+        if d1.year == d2.year and d1.month == d2.month:
+            return f"{d1.day}–{d2.day} {M[d1.month-1]} {d1.year}"
+        if d1.year == d2.year:
+            return f"{d1.day} {M[d1.month-1]} – {d2.day} {M[d2.month-1]} {d1.year}"
+        return f"{d1.day} {M[d1.month-1]} {d1.year} – {d2.day} {M[d2.month-1]} {d2.year}"
 
     if "meta_reports" not in st.session_state:
         st.session_state.meta_reports = []
     reports = st.session_state.meta_reports
-
-    month_opts   = _gen_months(24)
-    month_labels = [_month_label(m) for m in month_opts]
 
     BASE_MA = dict(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(20,25,41,0.6)",
@@ -1085,16 +1108,11 @@ with pg2:
                     orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0)
     )
 
-    # ── UPLOADER COMPACTO ─────────────────────────────────────────────────────
+    # ── UPLOADER ──────────────────────────────────────────────────────────────
     st.markdown('<div class="slabel">Subir reporte</div>', unsafe_allow_html=True)
-    uc1, uc2 = st.columns([3, 1])
-    with uc1:
-        uploaded_file = st.file_uploader(
-            "CSV Meta Ads", type=["csv"], label_visibility="collapsed"
-        )
-    with uc2:
-        sel_lbl   = st.selectbox("Mes del reporte", month_labels, index=0)
-        sel_month = month_opts[month_labels.index(sel_lbl)]
+    uploaded_file = st.file_uploader(
+        "CSV Meta Ads", type=["csv"], label_visibility="collapsed"
+    )
 
     if uploaded_file:
         try:
@@ -1133,33 +1151,54 @@ with pg2:
                 df_up = df_up[df_up[name_col].apply(
                     lambda x: str(x).strip().lower() not in SKIP_VALS)]
 
+            # Auto-detectar rango de fechas del reporte
+            d_start, d_end = _detect_date_range(df_up)
+            date_label = _fmt_dr(d_start, d_end)
+            month_key  = d_start.strftime("%Y-%m") if d_start else "9999-99"
+
             entry = {
                 "name": uploaded_file.name, "type": rtype,
-                "month": sel_month, "month_label": sel_lbl,
+                "month": month_key, "month_label": _month_label(month_key) if d_start else "?",
+                "date_start": d_start, "date_end": d_end, "date_label": date_label,
                 "df": df_up,
                 "cols": dict(spend=col_spend, results=col_results, cpr=col_cpr,
                              impressions=col_impr, clicks=col_clicks, ctr=col_ctr,
                              reach=col_reach, freq=col_freq,
                              campaign=col_camp, adset=col_adset, ad=col_ad)
             }
-            # Replace if same month+type already exists
-            reports = [r for r in reports
-                       if not (r.get("month") == sel_month and r["type"] == rtype)]
+            # Reemplazar si ya existe mismo archivo
+            reports = [r for r in reports if r["name"] != uploaded_file.name]
             reports.append(entry)
             st.session_state.meta_reports = reports
-            st.success(f"✓  {rtype} · {sel_lbl} · {len(df_up)} filas cargadas")
+            st.success(f"✓  {rtype} · {date_label} · {len(df_up)} filas")
         except Exception as e:
             st.error(f"Error leyendo el archivo: {e}")
 
-    # ── CHIPS DE REPORTES CARGADOS ────────────────────────────────────────────
+    # ── TABLA DE REPORTES CARGADOS (con botón eliminar) ───────────────────────
     if reports:
-        pills = "".join(
-            f"<span style='background:{CARD2};border:1px solid {BORDER};border-radius:20px;"
-            f"padding:3px 12px;font-size:.71rem;color:{CYANL};margin-right:6px'>"
-            f"📅 {r.get('month_label', r.get('month','?'))} · {r['type']}</span>"
-            for r in sorted(reports, key=lambda x: x.get("month",""))
-        )
-        st.markdown(f"<div style='margin:.4rem 0 .8rem'>{pills}</div>", unsafe_allow_html=True)
+        st.markdown('<div class="slabel">Reportes cargados</div>', unsafe_allow_html=True)
+        reps_sorted = sorted(reports, key=lambda x: (x.get("date_start") or date(2000,1,1)))
+        for i, r in enumerate(reps_sorted):
+            c = r["cols"]; df_r = r["df"]
+            sp  = fmt_cop(float(df_r[c["spend"]].sum()))   if c["spend"]   else "—"
+            rs  = fmt_num(float(df_r[c["results"]].sum())) if c["results"] else "—"
+            dl  = r.get("date_label", r.get("month_label", "?"))
+            idx_orig = reports.index(r)
+
+            rc1, rc2, rc3, rc4, rc5 = st.columns([3.2, 1.2, 1.2, 1.2, 0.5])
+            rc1.markdown(
+                f"<span style='color:{WHITE};font-size:.8rem;font-weight:600'>📅 {dl}</span>"
+                f"<span style='color:{MUTED};font-size:.75rem;margin-left:8px'>{r['type']}</span>",
+                unsafe_allow_html=True)
+            rc2.markdown(f"<span style='color:{PURPLEL};font-size:.8rem;font-weight:700'>{sp}</span>",
+                         unsafe_allow_html=True)
+            rc3.markdown(f"<span style='color:{CYANL};font-size:.8rem;font-weight:700'>{rs} leads</span>",
+                         unsafe_allow_html=True)
+            rc4.markdown(f"<span style='color:{MUTED};font-size:.72rem'>{r['name'][:28]}</span>",
+                         unsafe_allow_html=True)
+            if rc5.button("✕", key=f"del_rep_{i}", help="Eliminar reporte"):
+                st.session_state.meta_reports.pop(idx_orig)
+                st.rerun()
 
         # ── KPIs GLOBALES ─────────────────────────────────────────────────────
         all_spend = all_results = all_impr = 0.0
