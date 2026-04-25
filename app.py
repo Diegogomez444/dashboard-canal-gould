@@ -846,8 +846,9 @@ with pg0:
         meses = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"]
         return f"{d.day} {meses[d.month-1]} {d.year}"
 
+    from datetime import timezone as _tz
     min_d_r = df_combined["Fecha"].dt.date.min()
-    ayer_r  = date.today() - timedelta(days=1)
+    ayer_r  = datetime.now(_tz(timedelta(hours=-5))).date() - timedelta(days=1)
     max_d_r = min(df_combined["Fecha"].dt.date.max(), ayer_r)
 
     # Usamos el key del radio directamente para que el label se actualice en el mismo rerun
