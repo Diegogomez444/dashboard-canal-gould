@@ -672,17 +672,65 @@ label[data-testid="stWidgetLabel"] p{{
 </style>
 """, unsafe_allow_html=True)
 
-# Forzar viewport correcto en móvil (sin este tag el navegador hace zoom-out)
+# Viewport + fixes de móvil vía JS (más confiable que CSS puro para Streamlit)
 components.html("""
 <script>
 (function(){
+  /* 1. Viewport */
   var m = parent.document.querySelector('meta[name="viewport"]');
-  if(!m){
-    m = parent.document.createElement('meta');
-    m.name = 'viewport';
-    parent.document.head.appendChild(m);
-  }
+  if(!m){ m = parent.document.createElement('meta'); m.name='viewport'; parent.document.head.appendChild(m); }
   m.content = 'width=device-width, initial-scale=1.0, viewport-fit=cover';
+
+  var doc  = parent.document;
+  var win  = parent.window;
+  var mobile = win.innerWidth <= 660;
+
+  function applyFixes(){
+    /* 2. Ocultar "expand_more" en botones de popover */
+    doc.querySelectorAll('[data-testid="stPopover"] button').forEach(function(btn){
+      btn.querySelectorAll('.material-icons, [class*="material-icon"]').forEach(function(ic){
+        ic.style.setProperty('display','none','important');
+      });
+      /* Si el botón contiene el texto literal "expand_more", ocultarlo */
+      btn.childNodes.forEach(function(node){
+        if(node.nodeType===3 && node.textContent.trim()==='expand_more'){
+          node.textContent='';
+        }
+      });
+    });
+
+    if(!mobile) return;
+
+    /* 3. Columnas: 100% por defecto, 50% para bloques con 3+ hijos */
+    doc.querySelectorAll('[data-testid="stHorizontalBlock"]').forEach(function(block){
+      var cols = Array.prototype.filter.call(block.children, function(c){
+        return c.getAttribute('data-testid')==='column';
+      });
+      var pct = cols.length >= 3 ? 'calc(50% - 4px)' : '100%';
+      cols.forEach(function(col){
+        col.style.setProperty('width',     pct, 'important');
+        col.style.setProperty('min-width', pct, 'important');
+        col.style.setProperty('max-width', pct, 'important');
+        col.style.setProperty('flex',      '1 1 '+pct, 'important');
+      });
+    });
+
+    /* 4. Ocultar toolbar de Streamlit (Fork / GitHub) en móvil */
+    ['[data-testid="stToolbar"]','[data-testid="stDecoration"]',
+     '.viewerBadge_container__r5tak','.styles_viewerBadge__CvC9N']
+    .forEach(function(sel){
+      doc.querySelectorAll(sel).forEach(function(el){
+        el.style.setProperty('display','none','important');
+      });
+    });
+  }
+
+  /* Ejecutar varias veces para cubrir renders dinámicos de Streamlit */
+  [100, 600, 1400, 3000].forEach(function(ms){ setTimeout(applyFixes, ms); });
+
+  /* Observer para reaplicar cuando Streamlit re-renderiza */
+  var obs = new MutationObserver(function(){ setTimeout(applyFixes, 150); });
+  obs.observe(doc.body, {childList:true, subtree:true});
 })();
 </script>
 """, height=0)
