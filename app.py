@@ -606,28 +606,6 @@ label[data-testid="stWidgetLabel"] p{{
   .stPopover button p{{
     display:inline!important;font-size:.78rem!important;color:{WHITE}!important;}}
 
-  /* ── Popovers: cuerpo (contenido desplegado) ── */
-  [data-testid="stPopoverBody"]{{
-    background:{CARD}!important;border:1px solid {BORDER}!important;
-    border-radius:14px!important;padding:.6rem .5rem!important;}}
-  [data-testid="stPopoverBody"] *{{color:{WHITE}!important;}}
-
-  /* ── Radio dentro del popover: estilo pill moderno ── */
-  [data-testid="stPopoverBody"] [data-testid="stRadio"] > div{{
-    display:flex!important;flex-direction:column!important;gap:.15rem!important;}}
-  [data-testid="stPopoverBody"] [data-testid="stRadio"] label{{
-    background:transparent!important;border-radius:8px!important;
-    padding:.42rem .75rem!important;cursor:pointer!important;
-    transition:background .15s!important;font-size:.8rem!important;
-    font-weight:400!important;color:{MUTED}!important;
-    display:flex!important;align-items:center!important;gap:.5rem!important;}}
-  [data-testid="stPopoverBody"] [data-testid="stRadio"] label:hover{{
-    background:{BORDER}!important;color:{WHITE}!important;}}
-  [data-testid="stPopoverBody"] [data-testid="stRadio"] input:checked + div + div,
-  [data-testid="stPopoverBody"] [data-testid="stRadio"] label:has(input:checked){{
-    background:{PURPLE}22!important;color:{WHITE}!important;font-weight:600!important;}}
-  [data-testid="stPopoverBody"] [data-testid="stRadio"] input[type="radio"]{{
-    accent-color:{PURPLE}!important;}}
 
   /* ── File uploader ── */
   [data-testid="stFileUploader"]{{padding:.7rem!important;border-radius:12px!important;}}
@@ -891,70 +869,50 @@ with pg0:
     ayer_r  = datetime.now(_tz(timedelta(hours=-5))).date() - timedelta(days=1)
     max_d_r = min(df_combined["Fecha"].dt.date.max(), ayer_r)
 
-    # Usamos el key del radio directamente para que el label se actualice en el mismo rerun
-    cur_sel_r = st.session_state.get("res_radio", "Todo el período")
-
     OPCIONES_R = {
         "Ayer":            (ayer_r, ayer_r),
         "Últimos 7 días":  (max_d_r - timedelta(days=6),  max_d_r),
         "Últimos 14 días": (max_d_r - timedelta(days=13), max_d_r),
         "Últimos 30 días": (max_d_r - timedelta(days=29), max_d_r),
-        "Este mes":        (date.today().replace(day=1),  max_d_r),
+        "Este mes":        (datetime.now(_tz(timedelta(hours=-5))).date().replace(day=1), max_d_r),
         "Todo el período": (min_d_r, max_d_r),
-        "Personalizado":   (
-            st.session_state.get("res_ds", min_d_r),
-            st.session_state.get("res_de", max_d_r),
-        ),
+        "Personalizado":   (st.session_state.get("res_ds", min_d_r),
+                            st.session_state.get("res_de", max_d_r)),
     }
-
-    if cur_sel_r in OPCIONES_R and cur_sel_r != "Personalizado":
-        cur_start_r, cur_end_r = OPCIONES_R[cur_sel_r]
-    else:
-        cur_start_r = st.session_state.get("res_ds", min_d_r)
-        cur_end_r   = st.session_state.get("res_de", max_d_r)
-    cur_start_r = max(min_d_r, min(max_d_r, cur_start_r))
-    cur_end_r   = max(min_d_r, min(max_d_r, cur_end_r))
-    if cur_start_r > cur_end_r: cur_start_r = cur_end_r
-
-    if cur_start_r == cur_end_r:
-        btn_lbl_r = f"📅  {fmt_date_es_r(cur_start_r)}  ▾"
-        rango_r   = fmt_date_es_r(cur_start_r)
-    else:
-        btn_lbl_r = f"📅  {fmt_date_es_r(cur_start_r)} – {fmt_date_es_r(cur_end_r)}  ▾"
-        rango_r   = f"{fmt_date_es_r(cur_start_r)} – {fmt_date_es_r(cur_end_r)}"
+    opciones_r  = list(OPCIONES_R.keys())
+    cur_sel_r   = st.session_state.get("res_radio", "Todo el período")
+    idx_r       = opciones_r.index(cur_sel_r) if cur_sel_r in opciones_r else opciones_r.index("Todo el período")
 
     st.markdown('<div class="slabel">Resumen general</div>', unsafe_allow_html=True)
 
-    lbl_col_r, pop_col_r = st.columns([5, 4])
+    lbl_col_r, sel_col_r = st.columns([5, 4])
+    with sel_col_r:
+        r_sel = st.selectbox("Período", opciones_r, index=idx_r,
+                             label_visibility="collapsed", key="res_radio")
+
+    if r_sel == "Personalizado":
+        rpc1, rpc2 = st.columns(2)
+        with rpc1:
+            st.date_input("Desde", value=st.session_state.get("res_ds", min_d_r),
+                          min_value=min_d_r, max_value=max_d_r, key="res_ds")
+        with rpc2:
+            st.date_input("Hasta", value=st.session_state.get("res_de", max_d_r),
+                          min_value=min_d_r, max_value=max_d_r, key="res_de")
+        r_start = st.session_state.get("res_ds", min_d_r)
+        r_end   = st.session_state.get("res_de", max_d_r)
+    else:
+        r_start, r_end = OPCIONES_R.get(r_sel, (min_d_r, max_d_r))
+
+    r_start = max(min_d_r, min(max_d_r, r_start))
+    r_end   = max(min_d_r, min(max_d_r, r_end))
+    if r_start > r_end: r_start = r_end
+
+    rango_r = fmt_date_es_r(r_start) if r_start == r_end else f"{fmt_date_es_r(r_start)} – {fmt_date_es_r(r_end)}"
     with lbl_col_r:
         st.markdown(
             f"<div class='mobile-hidden' style='padding-top:.6rem;font-size:.72rem;color:{MUTED};font-weight:500'>"
             f"Período analizado: <strong style='color:{CYANL}'>{rango_r}</strong></div>",
             unsafe_allow_html=True)
-    with pop_col_r:
-        with st.popover(btn_lbl_r, use_container_width=True):
-            opciones_r = list(OPCIONES_R.keys())
-            idx_r = opciones_r.index(cur_sel_r) if cur_sel_r in opciones_r else 5
-            st.radio("Período", opciones_r, index=idx_r,
-                     label_visibility="collapsed", key="res_radio")
-            if st.session_state.get("res_radio") == "Personalizado":
-                rpc1, rpc2 = st.columns(2)
-                with rpc1:
-                    st.date_input("Desde", value=st.session_state.get("res_ds", min_d_r),
-                                  min_value=min_d_r, max_value=max_d_r, key="res_ds")
-                with rpc2:
-                    st.date_input("Hasta", value=st.session_state.get("res_de", max_d_r),
-                                  min_value=min_d_r, max_value=max_d_r, key="res_de")
-
-    r_sel = st.session_state.get("res_radio", "Todo el período")
-    if r_sel != "Personalizado":
-        r_start, r_end = OPCIONES_R[r_sel]
-    else:
-        r_start = st.session_state.get("res_ds", min_d_r)
-        r_end   = st.session_state.get("res_de", max_d_r)
-    r_start = max(min_d_r, min(max_d_r, r_start))
-    r_end   = max(min_d_r, min(max_d_r, r_end))
-    if r_start > r_end: r_start = r_end
 
     dfr  = df_combined[(df_combined["Fecha"].dt.date >= r_start) & (df_combined["Fecha"].dt.date <= r_end)].copy()
     dfrv = dfr[dfr["Gasto"].notna() & (dfr["Gasto"] > 0)].copy()
