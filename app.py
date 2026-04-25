@@ -559,19 +559,16 @@ label[data-testid="stWidgetLabel"] p{{
     font-size:.67rem!important;padding:.38rem .65rem!important;
     white-space:nowrap!important;min-width:auto!important;}}
 
-  /* ── COLUMNAS: todo a 100% por defecto ── */
+  /* ── COLUMNAS ──
+     2 hijos  → 100% c/u (charts, controles lado a lado → apilados)
+     3+ hijos → 50%  c/u (KPI grids → cuadrícula 2 × N) */
   [data-testid="stHorizontalBlock"]{{flex-wrap:wrap!important;gap:.45rem 0!important;}}
   [data-testid="column"]{{
     width:100%!important;min-width:100%!important;
     flex:1 1 100%!important;padding:0!important;box-sizing:border-box!important;}}
 
-  /* Filas de 4 KPIs → cuadrícula 2×2 */
-  [data-testid="stHorizontalBlock"]:has(>[data-testid="column"]:nth-child(4))
-    >[data-testid="column"]{{
-      min-width:calc(50% - .25rem)!important;width:calc(50% - .25rem)!important;
-      flex:1 1 calc(50% - .25rem)!important;}}
-  /* Filas de 3 KPIs → 2+1 */
-  [data-testid="stHorizontalBlock"]:has(>[data-testid="column"]:nth-child(3)):not(:has(>[data-testid="column"]:nth-child(4)))
+  /* 3 o más columnas (KPI rows de 3/4/5/7) → cuadrícula 2×N */
+  [data-testid="stHorizontalBlock"]:has(>[data-testid="column"]:nth-child(3))
     >[data-testid="column"]{{
       min-width:calc(50% - .25rem)!important;width:calc(50% - .25rem)!important;
       flex:1 1 calc(50% - .25rem)!important;}}
@@ -589,11 +586,15 @@ label[data-testid="stWidgetLabel"] p{{
   /* ── Popovers: fix ícono expand_more ── */
   [data-testid="stPopover"] button{{
     font-size:.74rem!important;min-height:44px!important;
-    border-radius:10px!important;}}
+    border-radius:10px!important;text-align:left!important;}}
+  /* Forzar icono Material Icons correctamente */
   [data-testid="stPopover"] button .material-icons,
   [data-testid="stPopover"] button span[class*="material"]{{
     font-family:'Material Icons'!important;font-size:1.1rem!important;
     vertical-align:middle!important;line-height:1!important;}}
+  /* Fallback: si el font no carga, el texto "expand_more" se achica */
+  [data-testid="stPopover"] button p{{
+    display:inline!important;font-size:.74rem!important;}}
 
   /* ── File uploader ── */
   [data-testid="stFileUploader"]{{padding:.7rem!important;border-radius:12px!important;}}
@@ -627,23 +628,46 @@ label[data-testid="stWidgetLabel"] p{{
   [data-testid="stMetricValue"]{{font-size:1.25rem!important;}}
   [data-testid="stMetricLabel"]{{font-size:.6rem!important;}}
 
+  /* ── Cards HTML custom (IA, Telegram, Diagnóstico) ── */
+  /* Ajuste de padding y font en divs con border-left (insight cards) */
+  div[style*="border-left"]{{padding:.7rem .9rem!important;}}
+  div[style*="border-radius:14px"],
+  div[style*="border-radius:12px"]{{margin-bottom:.5rem!important;}}
+
   /* ── Ocultar barra lateral de Streamlit si aparece ── */
   section[data-testid="stSidebar"]{{display:none!important;}}
+
+  /* ── Evitar overflow horizontal global ── */
+  .main,.block-container,
+  [data-testid="stAppViewContainer"]{{overflow-x:hidden!important;}}
+
+  /* ── Radio buttons más grandes (touch) ── */
+  [data-testid="stRadio"] label{{
+    font-size:.78rem!important;padding:.4rem 0!important;}}
+  [data-testid="stRadio"] [data-testid="stMarkdownContainer"]{{
+    font-size:.78rem!important;}}
+
+  /* ── Checkboxes más grandes ── */
+  [data-testid="stCheckbox"] label{{font-size:.78rem!important;}}
+
+  /* ── Alerts / info boxes ── */
+  [data-testid="stAlert"]{{border-radius:12px!important;font-size:.77rem!important;}}
+
+  /* ── Spinner ── */
+  [data-testid="stSpinner"]{{font-size:.78rem!important;}}
 }}
 
 /* ══════════════════════════════════════════════════════
    RESPONSIVE — TELÉFONO PEQUEÑO  (≤ 400px)
 ══════════════════════════════════════════════════════ */
 @media (max-width:400px){{
-  .block-container{{padding:.7rem .6rem 5rem .6rem!important;}}
-  .kc-val{{font-size:1.25rem!important;}}
-  .kc{{padding:.85rem .95rem!important;}}
-  .hdr-logo{{font-size:1rem!important;letter-spacing:.12em!important;}}
-  .stTabs [data-baseweb="tab"]{{font-size:.61rem!important;padding:.33rem .52rem!important;}}
-  /* En teléfonos muy pequeños, 3 y 4 cols también van a 100% */
-  [data-testid="stHorizontalBlock"]:has(>[data-testid="column"]:nth-child(3))
-    >[data-testid="column"]{{
-      min-width:100%!important;width:100%!important;flex:1 1 100%!important;}}
+  .block-container{{padding:.65rem .55rem 5rem .55rem!important;}}
+  .kc-val{{font-size:1.2rem!important;}}
+  .kc{{padding:.8rem .9rem!important;margin-bottom:.4rem!important;}}
+  .hdr-logo{{font-size:.95rem!important;letter-spacing:.1em!important;}}
+  .stTabs [data-baseweb="tab"]{{font-size:.6rem!important;padding:.3rem .5rem!important;}}
+  /* Todo a 1 columna en teléfonos muy pequeños */
+  [data-testid="column"]{{min-width:100%!important;width:100%!important;flex:1 1 100%!important;}}
 }}
 </style>
 """, unsafe_allow_html=True)
