@@ -999,7 +999,7 @@ with pg1:
     if "de" not in st.session_state: st.session_state.de = max_d
     OPCIONES = {
         "Todo el período":     (min_d, max_d),
-        "Ayer":                (max_d, max_d),
+        "Ayer":                (ayer, ayer),
         "Últimos 3 días":      (max_d - timedelta(days=2), max_d),
         "Últimos 7 días":      (max_d - timedelta(days=6), max_d),
         "Últimos 15 días":     (max_d - timedelta(days=14), max_d),
