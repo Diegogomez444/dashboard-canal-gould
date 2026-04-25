@@ -585,11 +585,14 @@ label[data-testid="stWidgetLabel"] p{{
   /* ── Section labels ── */
   .slabel{{font-size:.54rem!important;margin:1.1rem 0 .7rem 0!important;}}
 
-  /* ── Popovers: ocultar ícono expand_more ── */
+  /* ── Popovers: botón trigger ── */
   [data-testid="stPopover"] button,
   .stPopover button{{
-    font-size:.74rem!important;min-height:44px!important;
-    border-radius:10px!important;text-align:left!important;overflow:hidden!important;}}
+    background:{CARD2}!important;border:1px solid {BORDER}!important;
+    color:{WHITE}!important;font-size:.78rem!important;font-weight:500!important;
+    min-height:40px!important;border-radius:10px!important;
+    text-align:left!important;overflow:hidden!important;
+    padding:.4rem .85rem!important;}}
   [data-testid="stPopover"] button > span,
   .stPopover button > span,
   [data-testid="stPopover"] button span[class*="material"],
@@ -601,7 +604,30 @@ label[data-testid="stWidgetLabel"] p{{
     overflow:hidden!important;position:absolute!important;}}
   [data-testid="stPopover"] button p,
   .stPopover button p{{
-    display:inline!important;font-size:.74rem!important;}}
+    display:inline!important;font-size:.78rem!important;color:{WHITE}!important;}}
+
+  /* ── Popovers: cuerpo (contenido desplegado) ── */
+  [data-testid="stPopoverBody"]{{
+    background:{CARD}!important;border:1px solid {BORDER}!important;
+    border-radius:14px!important;padding:.6rem .5rem!important;}}
+  [data-testid="stPopoverBody"] *{{color:{WHITE}!important;}}
+
+  /* ── Radio dentro del popover: estilo pill moderno ── */
+  [data-testid="stPopoverBody"] [data-testid="stRadio"] > div{{
+    display:flex!important;flex-direction:column!important;gap:.15rem!important;}}
+  [data-testid="stPopoverBody"] [data-testid="stRadio"] label{{
+    background:transparent!important;border-radius:8px!important;
+    padding:.42rem .75rem!important;cursor:pointer!important;
+    transition:background .15s!important;font-size:.8rem!important;
+    font-weight:400!important;color:{MUTED}!important;
+    display:flex!important;align-items:center!important;gap:.5rem!important;}}
+  [data-testid="stPopoverBody"] [data-testid="stRadio"] label:hover{{
+    background:{BORDER}!important;color:{WHITE}!important;}}
+  [data-testid="stPopoverBody"] [data-testid="stRadio"] input:checked + div + div,
+  [data-testid="stPopoverBody"] [data-testid="stRadio"] label:has(input:checked){{
+    background:{PURPLE}22!important;color:{WHITE}!important;font-weight:600!important;}}
+  [data-testid="stPopoverBody"] [data-testid="stRadio"] input[type="radio"]{{
+    accent-color:{PURPLE}!important;}}
 
   /* ── File uploader ── */
   [data-testid="stFileUploader"]{{padding:.7rem!important;border-radius:12px!important;}}
