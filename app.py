@@ -852,7 +852,7 @@ with pg0:
     cur_sel_r = st.session_state.get("res_radio", "Todo el período")
 
     OPCIONES_R = {
-        "Ayer":            (ayer_r, ayer_r),
+        "Ayer":            (max_d_r, max_d_r),
         "Últimos 7 días":  (max_d_r - timedelta(days=6),  max_d_r),
         "Últimos 14 días": (max_d_r - timedelta(days=13), max_d_r),
         "Últimos 30 días": (max_d_r - timedelta(days=29), max_d_r),
@@ -999,7 +999,7 @@ with pg1:
     if "de" not in st.session_state: st.session_state.de = max_d
     OPCIONES = {
         "Todo el período":     (min_d, max_d),
-        "Ayer":                (ayer, ayer),
+        "Ayer":                (max_d, max_d),
         "Últimos 3 días":      (max_d - timedelta(days=2), max_d),
         "Últimos 7 días":      (max_d - timedelta(days=6), max_d),
         "Últimos 15 días":     (max_d - timedelta(days=14), max_d),
