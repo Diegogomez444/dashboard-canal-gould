@@ -997,10 +997,11 @@ with pg0:
     total_inv_r = inv_ads_r + inv_bot_r
 
     # Entradas y salidas — usa historial completo (TG_Subs + API)
+    # Fechas en df_growth_full están en UTC; convertir a Colombia (UTC-5) para alinear con el filtro
     entradas_tg_r = 0
     salidas_tg_r  = 0
     if not df_growth_full.empty:
-        _fecha_col = df_growth_full["fecha"].dt.date
+        _fecha_col = (df_growth_full["fecha"] - pd.Timedelta(hours=5)).dt.date
         dg_filt = df_growth_full[(_fecha_col >= r_start) & (_fecha_col <= r_end)]
         if "entradas" in df_growth_full.columns:
             entradas_tg_r = int(dg_filt["entradas"].sum())
