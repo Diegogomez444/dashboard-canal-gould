@@ -108,17 +108,30 @@ def delta_pct(current, prev):
         return (current - prev) / abs(prev) * 100
     return None
 
+def _fetch_ultima_fecha_tg_subs():
+    """Lee TG_Subs sin caché para obtener la fecha más reciente guardada."""
+    if not GID_TG_SUBS:
+        return pd.Timestamp("2000-01-01")
+    try:
+        raw = fetch_csv(GID_TG_SUBS)
+        if raw.empty or len(raw) <= 1:
+            return pd.Timestamp("2000-01-01")
+        raw.columns = [str(c).strip() for c in raw.columns]
+        fecha_col = next((c for c in raw.columns if "fecha" in c.lower()), None)
+        if not fecha_col:
+            return pd.Timestamp("2000-01-01")
+        fechas = pd.to_datetime(raw[fecha_col].iloc[1:], dayfirst=True, errors="coerce").dropna()
+        return fechas.max() if not fechas.empty else pd.Timestamp("2000-01-01")
+    except Exception:
+        return pd.Timestamp("2000-01-01")
+
 def sync_tg_growth(df_growth):
     if not APPS_SCRIPT_URL or df_growth is None or df_growth.empty:
         return
     try:
         import requests as _req
-        # Solo enviar fechas más recientes que la última ya guardada en TG_Subs
-        df_subs_actual = load_tg_subs()
-        if not df_subs_actual.empty:
-            ultima_fecha = df_subs_actual["fecha"].max()
-        else:
-            ultima_fecha = pd.Timestamp("2000-01-01")
+        # Solo enviar fechas más recientes que la última ya guardada (sin caché)
+        ultima_fecha = _fetch_ultima_fecha_tg_subs()
 
         rows = []
         for _, row in df_growth.iterrows():
