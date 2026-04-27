@@ -19,8 +19,10 @@ try:
     CLIENTE       = st.secrets.get("CLIENTE",       "La Fiera Analista")
     TG_API_ID     = st.secrets.get("TG_API_ID",     "")
     TG_API_HASH   = st.secrets.get("TG_API_HASH",   "")
-    TG_SESSION    = "".join(str(st.secrets.get("TG_SESSION", "")).split())
-    TG_CHANNEL    = st.secrets.get("TG_CHANNEL",    "")
+    TG_SESSION      = "".join(str(st.secrets.get("TG_SESSION", "")).split())
+    TG_CHANNEL      = st.secrets.get("TG_CHANNEL",      "")
+    APPS_SCRIPT_URL = st.secrets.get("APPS_SCRIPT_URL", "")
+    GID_TG_SUBS     = st.secrets.get("GID_TG_SUBS",     "")
 except Exception:
     SHEET_ID      = "1KszbEw3CX5jWtWxqE_Oy7Bi17IA5ZJr6FfOkCRJ4zH4"
     GID_GENERAL   = "0"
@@ -29,8 +31,10 @@ except Exception:
     CLIENTE       = "La Fiera Analista"
     TG_API_ID     = ""
     TG_API_HASH   = ""
-    TG_SESSION    = ""
-    TG_CHANNEL    = ""
+    TG_SESSION      = ""
+    TG_CHANNEL      = ""
+    APPS_SCRIPT_URL = ""
+    GID_TG_SUBS     = ""
 
 
 # ── PALETTE ────────────────────────────────────────────────────────────────────
@@ -103,6 +107,29 @@ def delta_pct(current, prev):
     if prev and prev != 0:
         return (current - prev) / abs(prev) * 100
     return None
+
+def sync_tg_growth(df_growth):
+    if not APPS_SCRIPT_URL or df_growth is None or df_growth.empty:
+        return
+    try:
+        import requests as _req
+        rows = []
+        for _, row in df_growth.iterrows():
+            fecha = row["fecha"]
+            if hasattr(fecha, "strftime"):
+                fecha_str = fecha.strftime("%d/%m/%Y")
+            else:
+                fecha_str = str(fecha)[:10]
+            rows.append([
+                fecha_str,
+                int(row.get("entradas", 0)),
+                int(row.get("salidas",  0)),
+                int(row.get("miembros", 0)),
+            ])
+        if rows:
+            _req.post(APPS_SCRIPT_URL, json={"rows": rows}, timeout=10)
+    except Exception:
+        pass
 
 # ── META ADS HELPERS ───────────────────────────────────────────────────────────
 META_COL = {
@@ -180,7 +207,8 @@ def load_telegram_data():
 
     async def _fetch():
         async with TelegramClient(StringSession(TG_SESSION), int(TG_API_ID), TG_API_HASH) as client:
-            entity = await client.get_entity(TG_CHANNEL)
+            channel_id = int(TG_CHANNEL) if str(TG_CHANNEL).lstrip("-").isdigit() else TG_CHANNEL
+            entity = await client.get_entity(channel_id)
             full   = await client(GetFullChannelRequest(entity))
 
             subscribers = full.full_chat.participants_count
@@ -387,6 +415,32 @@ def load_historical():
     for c in ["CTR","Cargar Web","Conv Web"]:
         if c in df.columns: df[c] = df[c].apply(parse_pct)
     return df.sort_values("Fecha").reset_index(drop=True)
+
+@st.cache_data(ttl=300)
+def load_tg_subs():
+    if not GID_TG_SUBS:
+        return pd.DataFrame()
+    try:
+        raw = fetch_csv(GID_TG_SUBS)
+        if raw.empty:
+            return pd.DataFrame()
+        raw.columns = [str(c).strip() for c in raw.columns]
+        col_map = {}
+        for c in raw.columns:
+            cl = c.lower()
+            if "fecha" in cl:                col_map[c] = "fecha"
+            elif "entr" in cl:               col_map[c] = "entradas"
+            elif "sal" in cl:                col_map[c] = "salidas"
+            elif "susc" in cl or "miem" in cl: col_map[c] = "miembros"
+        raw = raw.rename(columns=col_map)
+        raw["fecha"] = pd.to_datetime(raw["fecha"], dayfirst=True, errors="coerce")
+        raw = raw[raw["fecha"].notna()]
+        for c in ["entradas","salidas","miembros"]:
+            if c in raw.columns:
+                raw[c] = pd.to_numeric(raw[c], errors="coerce").fillna(0).astype(int)
+        return raw.sort_values("fecha").reset_index(drop=True)
+    except Exception:
+        return pd.DataFrame()
 
 # ── PAGE SETUP ─────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Digital Crew · Dashboard", page_icon="⚡", layout="wide")
@@ -805,6 +859,26 @@ with c_btn:
 
 # Cargar datos de Telegram antes de las pestañas (necesario para Resumen)
 tg = load_telegram_data()
+if tg and "error" not in tg and "df_growth" in tg:
+    sync_tg_growth(tg["df_growth"])
+
+# Historial completo de crecimiento: TG_Subs (base) + API (datos recientes)
+_df_subs = load_tg_subs()
+if tg and "error" not in tg and "df_growth" in tg and not tg["df_growth"].empty:
+    _api_growth = tg["df_growth"].copy()
+    _api_growth["fecha"] = pd.to_datetime(_api_growth["fecha"]).dt.normalize()
+    if not _df_subs.empty:
+        _df_subs["fecha"] = pd.to_datetime(_df_subs["fecha"]).dt.normalize()
+        df_growth_full = pd.concat([_df_subs, _api_growth], ignore_index=True)
+        df_growth_full = df_growth_full.drop_duplicates(subset=["fecha"], keep="last")
+    else:
+        df_growth_full = _api_growth
+    df_growth_full = df_growth_full.sort_values("fecha").reset_index(drop=True)
+elif not _df_subs.empty:
+    _df_subs["fecha"] = pd.to_datetime(_df_subs["fecha"]).dt.normalize()
+    df_growth_full = _df_subs
+else:
+    df_growth_full = pd.DataFrame()
 
 # ── PESTAÑAS PRINCIPALES ───────────────────────────────────────────────────────
 pg0, pg1, pg2, pg3, pg4 = st.tabs(["📊  Resumen", "📅  Mes Actual", "📘  Meta Ads", "📲  Telegram", "🤖  IA"])
@@ -922,22 +996,16 @@ with pg0:
     inv_bot_r   = float(dfrv["TG Tracking"].sum()) if "TG Tracking" in dfrv.columns and not dfrv.empty else 0.0
     total_inv_r = inv_ads_r + inv_bot_r
 
-    # Entradas y salidas desde Telegram
+    # Entradas y salidas — usa historial completo (TG_Subs + API)
     entradas_tg_r = 0
     salidas_tg_r  = 0
-    if tg and "error" not in tg:
-        df_growth_tg = tg.get("df_growth", pd.DataFrame())
-        if not df_growth_tg.empty:
-            # Telegram almacena fechas en UTC; convertir a Colombia (UTC-5) para alinear con el filtro
-            _tg_fecha_col = (df_growth_tg["fecha"] - pd.Timedelta(hours=5)).dt.date
-            dg_filt = df_growth_tg[
-                (_tg_fecha_col >= r_start) &
-                (_tg_fecha_col <= r_end)
-            ]
-            if "entradas" in df_growth_tg.columns:
-                entradas_tg_r = int(dg_filt["entradas"].sum())
-            if "salidas" in df_growth_tg.columns:
-                salidas_tg_r  = int(dg_filt["salidas"].sum())
+    if not df_growth_full.empty:
+        _fecha_col = df_growth_full["fecha"].dt.date
+        dg_filt = df_growth_full[(_fecha_col >= r_start) & (_fecha_col <= r_end)]
+        if "entradas" in df_growth_full.columns:
+            entradas_tg_r = int(dg_filt["entradas"].sum())
+        if "salidas" in df_growth_full.columns:
+            salidas_tg_r  = int(dg_filt["salidas"].sum())
 
     registros_netos_r  = entradas_tg_r - salidas_tg_r
     cxl_ads_r          = inv_ads_r   / entradas_tg_r    if entradas_tg_r    > 0 else None
