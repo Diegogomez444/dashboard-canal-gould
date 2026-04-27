@@ -113,9 +113,18 @@ def sync_tg_growth(df_growth):
         return
     try:
         import requests as _req
+        # Solo enviar fechas más recientes que la última ya guardada en TG_Subs
+        df_subs_actual = load_tg_subs()
+        if not df_subs_actual.empty:
+            ultima_fecha = df_subs_actual["fecha"].max()
+        else:
+            ultima_fecha = pd.Timestamp("2000-01-01")
+
         rows = []
         for _, row in df_growth.iterrows():
             fecha = row["fecha"]
+            if pd.Timestamp(fecha) <= ultima_fecha:
+                continue
             if hasattr(fecha, "strftime"):
                 fecha_str = fecha.strftime("%d/%m/%Y")
             else:
