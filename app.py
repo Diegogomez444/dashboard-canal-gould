@@ -113,14 +113,16 @@ def _fetch_ultima_fecha_tg_subs():
     if not GID_TG_SUBS:
         return pd.Timestamp("2000-01-01")
     try:
-        raw = fetch_csv(GID_TG_SUBS)
-        if raw.empty or len(raw) <= 1:
+        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID_TG_SUBS}"
+        import urllib.request as _ur, io as _io
+        with _ur.urlopen(url) as r:
+            raw = pd.read_csv(_io.StringIO(r.read().decode("utf-8")))
+        if raw.empty:
             return pd.Timestamp("2000-01-01")
-        raw.columns = [str(c).strip() for c in raw.columns]
-        fecha_col = next((c for c in raw.columns if "fecha" in c.lower()), None)
+        fecha_col = next((c for c in raw.columns if "fecha" in str(c).lower()), None)
         if not fecha_col:
             return pd.Timestamp("2000-01-01")
-        fechas = pd.to_datetime(raw[fecha_col].iloc[1:], dayfirst=True, errors="coerce").dropna()
+        fechas = pd.to_datetime(raw[fecha_col], dayfirst=True, errors="coerce").dropna()
         return fechas.max() if not fechas.empty else pd.Timestamp("2000-01-01")
     except Exception:
         return pd.Timestamp("2000-01-01")
